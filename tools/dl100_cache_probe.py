@@ -52,20 +52,29 @@ async def main() -> int:
     print("READ ONLY: no lock or unlock command is sent.\n")
 
     discovery = await async_targeted_tdp_discovery(host)
-    if not discovery:
-        raise RuntimeError("DL100 did not answer targeted local TDP discovery")
 
-    local_device_id = discovery.get("device_id")
-    scheme = discovery.get("mgt_encrypt_schm") or {}
-    print(json.dumps({
-        "device_model": discovery.get("device_model"),
-        "device_type": discovery.get("device_type"),
-        "encrypt_type": scheme.get("encrypt_type"),
-        "local_device_id_present": bool(local_device_id),
-    }, indent=2))
-
-    if not local_device_id:
-        raise RuntimeError("Local discovery did not return a DL100 device_id")
+    if discovery:
+        local_device_id = discovery.get("device_id")
+        scheme = discovery.get("mgt_encrypt_schm") or {}
+        print(json.dumps({
+            "device_model": discovery.get("device_model"),
+            "device_type": discovery.get("device_type"),
+            "encrypt_type": scheme.get("encrypt_type"),
+            "local_device_id_present": bool(local_device_id),
+        }, indent=2))
+    else:
+        local_device_id = None
+        print(json.dumps({
+            "device_model": "DL100 (manual test target)",
+            "device_type": "SMART.TAPOLOCK (expected)",
+            "encrypt_type": "DLKLAP (expected)",
+            "local_tdp_response": False,
+        }, indent=2))
+        print(
+            "\nWARNING: The sleeping lock did not answer targeted TDP discovery. "
+            "Continuing the explicit provisioning test using the supplied LAN IP. "
+            "The cloud-side DL100 deviceId will be resolved during provisioning."
+        )
 
     email = input("TP-Link/Tapo account email: ").strip()
     password = getpass.getpass("TP-Link/Tapo account password (not echoed): ")
