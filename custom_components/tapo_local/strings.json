@@ -1,0 +1,33 @@
+{
+  "title": "TP-Link Local",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a local TP-Link device",
+        "description": "Connect directly to a supported TP-Link/Kasa device on your LAN. No TP-Link cloud connection is used.",
+        "data": {
+          "host": "IP address or hostname"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the device locally.",
+      "device_error": "The device returned an error.",
+      "unsupported_device": "This device does not expose a supported local-only protocol.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "TP-Link Local options",
+        "data": {
+          "poll_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  }
+}
