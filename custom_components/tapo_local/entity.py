@@ -30,6 +30,7 @@ class TPLinkLocalEntity(CoordinatorEntity[TPLinkLocalCoordinator]):
         sysinfo = self.coordinator.sysinfo
         return DeviceInfo(
             identifiers={(DOMAIN, str(self.coordinator.entry.unique_id))},
+            name=self.coordinator.entry.title,
             manufacturer="TP-Link",
             model=self.coordinator.model,
             sw_version=str(sysinfo.get("sw_ver", "")) or None,
