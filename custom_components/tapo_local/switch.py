@@ -18,6 +18,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up local switch entities."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
+    if coordinator.is_lock:
+        return
 
     entities: list[SwitchEntity] = [
         TPLinkRelaySwitch(coordinator),
