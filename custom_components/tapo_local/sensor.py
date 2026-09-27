@@ -28,10 +28,12 @@ async def async_setup_entry(
     """Set up sensors."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
 
-    entities: list[SensorEntity] = [
-        TPLinkRssiSensor(coordinator),
-        TPLinkOnTimeSensor(coordinator),
-    ]
+    entities: list[SensorEntity] = [TPLinkRssiSensor(coordinator)]
+
+    if coordinator.is_lock:
+        entities.append(TPLinkBatterySensor(coordinator))
+    else:
+        entities.append(TPLinkOnTimeSensor(coordinator))
 
     if coordinator.has_pir:
         entities.extend(
@@ -58,6 +60,21 @@ class TPLinkRssiSensor(TPLinkLocalEntity, SensorEntity):
     @property
     def native_value(self):
         return self.coordinator.sysinfo.get("rssi")
+
+
+class TPLinkBatterySensor(TPLinkLocalEntity, SensorEntity):
+    """DL100 battery level."""
+
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
+        super().__init__(coordinator, key="battery", name="Battery")
+
+    @property
+    def native_value(self):
+        return self.coordinator.sysinfo.get("battery_percentage")
 
 
 class TPLinkOnTimeSensor(TPLinkLocalEntity, SensorEntity):

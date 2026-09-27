@@ -4,16 +4,25 @@
     "step": {
       "user": {
         "title": "Add a local TP-Link device",
-        "description": "Connect directly to a supported TP-Link/Kasa device on your LAN. No TP-Link cloud connection is used.",
+        "description": "Identify a supported TP-Link/Kasa/Tapo device directly on your LAN.",
         "data": {
           "host": "IP address or hostname"
+        }
+      },
+      "dl100": {
+        "title": "Add Tapo DL100",
+        "description": "{model} uses DLKLAP. TP-Link Local will provision a control key, persist it, and then try that key locally first on future sessions.",
+        "data": {
+          "username": "TP-Link/Tapo account email",
+          "password": "TP-Link/Tapo account password"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the device locally.",
+      "cannot_connect": "Unable to connect to the device locally or establish its required local session.",
       "device_error": "The device returned an error.",
-      "unsupported_device": "This device does not expose a supported local-only protocol.",
+      "unsupported_device": "This device does not expose a supported local-control protocol.",
+      "invalid_auth": "TP-Link/Tapo account authentication failed.",
       "unknown": "Unexpected error."
     },
     "abort": {
