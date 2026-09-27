@@ -18,12 +18,11 @@ from .const import (
     DOMAIN,
     MAX_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
-    SUPPORTED_DEVICE_TYPES,
     SUPPORTED_MODELS,
     TRANSPORT_XOR,
 )
-from .discovery import async_identify_device
-from .protocol import TPLinkLocalConnectionError
+from .discovery import async_targeted_tdp_discovery
+from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
 
 
 USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
@@ -32,53 +31,53 @@ USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
 class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a TP-Link Local config flow."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Add a device by LAN address without cloud authentication."""
+        """Add a device by address using deterministic local protocols."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
+            backend = KasaLocalDevice(host)
 
             try:
-                discovery = await async_identify_device(host)
-            except TPLinkLocalConnectionError:
-                errors["base"] = "cannot_connect"
-            except Exception:
-                errors["base"] = "unknown"
+                info = await backend.async_probe()
+            except TPLinkLocalBackendError:
+                # The supported switches did not answer forced XOR. Check
+                # targeted TDP only to identify known non-XOR devices such as
+                # DL100; this does not use python-kasa discovery/fallback.
+                discovery = await async_targeted_tdp_discovery(host)
+                if discovery:
+                    model = str(discovery.get("device_model") or "")
+                    dtype = str(discovery.get("device_type") or "")
+                    if model.split("(", 1)[0].strip() == "DL100" and dtype == "SMART.TAPOLOCK":
+                        return self.async_abort(reason="dl100_no_local_wifi")
+                    errors["base"] = "unsupported_device"
+                else:
+                    errors["base"] = "cannot_connect"
             else:
-                if (
-                    discovery.transport == TRANSPORT_XOR
-                    and discovery.device_type in SUPPORTED_DEVICE_TYPES
-                    and discovery.model_base in SUPPORTED_MODELS
-                ):
-                    unique_id = discovery.device_id or host
+                model = str(info["model"])
+                model_base = model.split("(", 1)[0].strip()
+                if model_base not in SUPPORTED_MODELS:
+                    errors["base"] = "unsupported_device"
+                else:
+                    unique_id = str(info.get("device_id") or host)
                     await self.async_set_unique_id(unique_id)
                     self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
-                    sysinfo = discovery.sysinfo or {}
-                    title = str(sysinfo.get("alias") or discovery.model)
                     return self.async_create_entry(
-                        title=title,
+                        title=str(info.get("alias") or model),
                         data={
                             CONF_HOST: host,
-                            "model": discovery.model,
-                            "device_type": discovery.device_type,
+                            "model": model,
+                            "device_type": str(info.get("device_type") or ""),
                             CONF_TRANSPORT: TRANSPORT_XOR,
                         },
                     )
-
-                if (
-                    discovery.device_type == "SMART.TAPOLOCK"
-                    and discovery.model_base == "DL100"
-                ):
-                    return self.async_abort(reason="dl100_ble_required")
-
-                errors["base"] = "unsupported_device"
 
         return self.async_show_form(
             step_id="user",
@@ -119,15 +118,9 @@ class TPLinkLocalOptionsFlow(config_entries.OptionsFlow):
                     default=current,
                 ): vol.All(
                     vol.Coerce(int),
-                    vol.Range(
-                        min=MIN_POLL_INTERVAL,
-                        max=MAX_POLL_INTERVAL,
-                    ),
+                    vol.Range(min=MIN_POLL_INTERVAL, max=MAX_POLL_INTERVAL),
                 ),
             }
         )
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=schema,
-        )
+        return self.async_show_form(step_id="init", data_schema=schema)
