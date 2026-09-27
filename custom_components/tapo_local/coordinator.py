@@ -11,8 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    CONF_CONTROL_KEY,
     CONF_POLL_INTERVAL,
+    CONF_SESSION,
     CONF_TRANSPORT,
     DEFAULT_LOCK_POLL_INTERVAL,
     DEFAULT_POLL_INTERVAL,
@@ -92,12 +92,15 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 data.get("pir_adc", {}),
             )
 
+        # DLKLAP's sequence number advances on every encrypted request. Persist
+        # the latest LAN session after each successful poll so a Home Assistant
+        # restart resumes from the current sequence instead of a stale one.
         if self.is_lock and isinstance(self.device, Dl100Device):
-            control_key = self.device.control_key
-            if control_key and control_key != self.entry.data.get(CONF_CONTROL_KEY):
+            session_state = self.device.export_session()
+            if session_state and session_state != self.entry.data.get(CONF_SESSION):
                 self.hass.config_entries.async_update_entry(
                     self.entry,
-                    data={**self.entry.data, CONF_CONTROL_KEY: control_key},
+                    data={**self.entry.data, CONF_SESSION: session_state},
                 )
 
         return data
