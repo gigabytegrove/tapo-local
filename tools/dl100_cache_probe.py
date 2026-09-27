@@ -55,16 +55,16 @@ async def main() -> int:
     if not discovery:
         raise RuntimeError("DL100 did not answer targeted local TDP discovery")
 
-    device_id = discovery.get("device_id")
+    local_device_id = discovery.get("device_id")
     scheme = discovery.get("mgt_encrypt_schm") or {}
     print(json.dumps({
         "device_model": discovery.get("device_model"),
         "device_type": discovery.get("device_type"),
         "encrypt_type": scheme.get("encrypt_type"),
-        "device_id_present": bool(device_id),
+        "local_device_id_present": bool(local_device_id),
     }, indent=2))
 
-    if not device_id:
+    if not local_device_id:
         raise RuntimeError("Local discovery did not return a DL100 device_id")
 
     email = input("TP-Link/Tapo account email: ").strip()
@@ -76,18 +76,20 @@ async def main() -> int:
         host,
         username=email,
         password=password,
-        device_id=str(device_id),
+        device_id=None,
         terminal_uuid=terminal_uuid,
         allow_cloud_bootstrap=True,
     )
     state_a = await provisioner.get_state()
+    if not provisioner.device_id:
+        raise RuntimeError("Provisioning succeeded but cloud DL100 deviceId was unresolved")
     session_state = provisioner.export_session()
     if not session_state:
         raise RuntimeError("Provisioning succeeded but no local session was retained")
 
     CACHE_PATH.write_text(json.dumps({
         "host": host,
-        "device_id": str(device_id),
+        "device_id": str(provisioner.device_id),
         "terminal_uuid": terminal_uuid,
         "session": session_state,
     }, indent=2))
@@ -106,7 +108,7 @@ async def main() -> int:
     cached = json.loads(CACHE_PATH.read_text())
     local_only = Dl100Device(
         host,
-        device_id=str(device_id),
+        device_id=str(cached["device_id"]),
         terminal_uuid=terminal_uuid,
         session_state=cached["session"],
         allow_cloud_bootstrap=False,
