@@ -55,6 +55,24 @@ def _sha256(*parts: bytes) -> bytes:
     return digest.digest()
 
 
+def _safe_cloud_error(raw: bytes) -> str:
+    """Return a redacted cloud error description without tokens or secrets."""
+    try:
+        value = json.loads(raw.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        text = raw.decode("utf-8", errors="replace").strip()
+        return text[:300] if text else "<empty response>"
+
+    if not isinstance(value, dict):
+        return str(value)[:300]
+
+    safe = {}
+    for key in ("error_code", "code", "msg", "message"):
+        if key in value:
+            safe[key] = value[key]
+    return json.dumps(safe or {"response": "unrecognized error body"})
+
+
 def _pkcs7_pad(data: bytes) -> bytes:
     padder = padding.PKCS7(128).padder()
     return padder.update(data) + padder.finalize()
@@ -249,7 +267,7 @@ class Dl100Device:
         *,
         username: str = "",
         password: str = "",
-        device_id: str,
+        device_id: str | None = None,
         terminal_uuid: str | None = None,
         control_key: str | None = None,
         session_state: dict[str, Any] | None = None,
@@ -356,6 +374,74 @@ class Dl100Device:
         self._token = str(token)
         self._account_id = str(account_id)
 
+    async def _resolve_cloud_device_id(self) -> None:
+        """Resolve the cloud-side DL100 deviceId during explicit provisioning."""
+        if self.device_id:
+            return
+        if self._token is None:
+            raise DlklapProtocolError(
+                "DLKLAP cloud token is unavailable for device-id resolution"
+            )
+
+        request = {"method": "getDeviceList"}
+        try:
+            status, _, raw = await _http_post(
+                f"{CLOUD_LOGIN_URL}?{urlencode({'token': self._token})}",
+                body=json.dumps(request, separators=(",", ":")).encode(),
+                headers={"Content-Type": "application/json"},
+                verify_tls=True,
+            )
+        except (OSError, TimeoutError) as exc:
+            raise TPLinkLocalConnectionError(
+                f"Unable to resolve DL100 cloud device id: {exc}"
+            ) from exc
+
+        if status != 200:
+            detail = _safe_cloud_error(raw)
+            raise TPLinkLocalConnectionError(
+                f"DL100 device-list service returned HTTP {status}: {detail}"
+            )
+
+        try:
+            response = json.loads(raw.decode())
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DlklapProtocolError("Invalid DL100 device-list response") from exc
+
+        if response.get("error_code", 0) != 0:
+            raise DlklapAuthenticationError(
+                f"DL100 device-list request failed: {_safe_cloud_error(raw)}"
+            )
+
+        result = response.get("result")
+        devices = result.get("deviceList", []) if isinstance(result, dict) else []
+        locks = [
+            item
+            for item in devices
+            if isinstance(item, dict)
+            and (
+                str(item.get("deviceType", "")) == "SMART.TAPOLOCK"
+                or "DL100" in str(item.get("deviceModel", "")).upper()
+            )
+        ]
+
+        if not locks:
+            raise DlklapProtocolError(
+                "No DL100 was found in the authenticated TP-Link/Tapo account"
+            )
+        if len(locks) > 1:
+            raise DlklapProtocolError(
+                "Multiple DL100 locks were found in the account; "
+                "automatic provisioning cannot safely choose one yet"
+            )
+
+        cloud_device_id = locks[0].get("deviceId")
+        if not cloud_device_id:
+            raise DlklapProtocolError(
+                "TP-Link device list returned a DL100 without a deviceId"
+            )
+
+        self.device_id = str(cloud_device_id)
+
     async def _handshake0(self, rand4: bytes) -> str:
         if self._account_id is None:
             raise DlklapProtocolError("DLKLAP accountId is unavailable")
@@ -392,6 +478,8 @@ class Dl100Device:
     async def _fetch_control_key(self, secret: str, rand4: bytes) -> str:
         if self._token is None:
             raise DlklapProtocolError("DLKLAP cloud token is unavailable")
+        if not self.device_id:
+            raise DlklapProtocolError("DLKLAP cloud deviceId is unavailable")
 
         headers = {
             "Authorization": f"ut|{self._token}",
@@ -423,8 +511,9 @@ class Dl100Device:
             ) from exc
 
         if status != 200:
+            detail = _safe_cloud_error(raw)
             raise TPLinkLocalConnectionError(
-                f"DL100 control-key service returned HTTP {status}"
+                f"DL100 control-key service returned HTTP {status}: {detail}"
             )
 
         try:
@@ -523,6 +612,7 @@ class Dl100Device:
             )
 
         await self._cloud_login()
+        await self._resolve_cloud_device_id()
         rand4 = secrets.token_bytes(4)
         secret = await self._handshake0(rand4)
         control_key = await self._fetch_control_key(secret, rand4)
