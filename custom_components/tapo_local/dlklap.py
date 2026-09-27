@@ -9,6 +9,7 @@ cloud provisioning.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import http.client
@@ -183,6 +184,35 @@ class DlklapSession:
     def _kdf(self, tag: bytes) -> bytes:
         return _sha256(tag, self.local_seed, self.remote_seed, self.lmk)
 
+    def export_state(self, cookie: str) -> dict[str, Any]:
+        """Export the active local session for Home Assistant persistence."""
+        return {
+            "local_seed": base64.b64encode(self.local_seed).decode("ascii"),
+            "remote_seed": base64.b64encode(self.remote_seed).decode("ascii"),
+            "lmk": base64.b64encode(self.lmk).decode("ascii"),
+            "seq": self.seq,
+            "cookie": cookie,
+        }
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> tuple["DlklapSession", str]:
+        """Restore a previously established local session."""
+        try:
+            local_seed = base64.b64decode(str(state["local_seed"]), validate=True)
+            remote_seed = base64.b64decode(str(state["remote_seed"]), validate=True)
+            lmk = base64.b64decode(str(state["lmk"]), validate=True)
+            seq = int(state["seq"])
+            cookie = str(state["cookie"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise DlklapProtocolError("Stored DLKLAP session is invalid") from exc
+        if len(local_seed) != 16 or len(remote_seed) != 16 or len(lmk) != 32:
+            raise DlklapProtocolError("Stored DLKLAP session has invalid key sizes")
+        if not cookie.startswith(f"{SESSION_COOKIE_NAME}="):
+            raise DlklapProtocolError("Stored DLKLAP session has invalid cookie")
+        session = cls(local_seed, remote_seed, lmk)
+        session.seq = seq
+        return session, cookie
+
     def encrypt(self, payload: bytes) -> tuple[bytes, int]:
         self.seq += 1
         seq_bytes = self.seq.to_bytes(4, "big")
@@ -217,11 +247,12 @@ class Dl100Device:
         self,
         host: str,
         *,
-        username: str,
-        password: str,
+        username: str = "",
+        password: str = "",
         device_id: str,
         terminal_uuid: str | None = None,
         control_key: str | None = None,
+        session_state: dict[str, Any] | None = None,
         allow_cloud_bootstrap: bool = False,
     ) -> None:
         self.host = host
@@ -240,10 +271,20 @@ class Dl100Device:
         self._lock = asyncio.Lock()
         self._last_session_source: str | None = None
 
+        if session_state:
+            self._session, self._cookie = DlklapSession.from_state(session_state)
+            self._last_session_source = "persisted_session"
+
     @property
     def control_key(self) -> str | None:
         """Return the provisioned DLKLAP control key."""
         return self._control_key
+
+    def export_session(self) -> dict[str, Any] | None:
+        """Return the active encrypted LAN session for persistence."""
+        if self._session is None or self._cookie is None:
+            return None
+        return self._session.export_state(self._cookie)
 
     @property
     def last_session_source(self) -> str | None:
@@ -474,26 +515,11 @@ class Dl100Device:
             )
 
     async def _establish_session(self) -> None:
-        """Establish a session, preferring the stored key and local traffic only."""
-        if self._control_key:
-            try:
-                local_seed, remote_seed, lmk = await self._handshake1(
-                    self._control_key
-                )
-                await self._handshake2(local_seed, remote_seed, lmk)
-                self._session = DlklapSession(local_seed, remote_seed, lmk)
-                self._last_session_source = "cached_control_key"
-                return
-            except TPLinkLocalConnectionError:
-                raise
-            except (DlklapAuthenticationError, DlklapProtocolError):
-                self._control_key = None
-                self._cookie = None
-
+        """Provision a fresh session only when explicitly allowed by setup/reconfigure."""
         if not self._allow_cloud_bootstrap:
             raise DlklapAuthenticationError(
-                "DL100 saved control key is unavailable or was rejected; "
-                "reprovision this device to mint a replacement key"
+                "DL100 local session is unavailable or expired; use Reconfigure "
+                "to provision a replacement session"
             )
 
         await self._cloud_login()
@@ -505,7 +531,7 @@ class Dl100Device:
 
         self._control_key = control_key
         self._session = DlklapSession(local_seed, remote_seed, lmk)
-        self._last_session_source = "provisioned_control_key"
+        self._last_session_source = "provisioned_session"
 
     async def _request_once(
         self, request: dict[str, Any]
