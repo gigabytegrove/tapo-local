@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, Platform
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 
+from .const import (
+    CONF_CONTROL_KEY,
+    CONF_DEVICE_ID,
+    CONF_TERMINAL_UUID,
+    CONF_TRANSPORT,
+    TRANSPORT_DLKLAP,
+)
 from .coordinator import TPLinkLocalCoordinator
+from .dlklap import Dl100Device
 from .protocol import TPLinkLocalDevice
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.LOCK,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
@@ -19,9 +28,19 @@ PLATFORMS = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up TP-Link Local from a config entry."""
-    device = TPLinkLocalDevice(entry.data[CONF_HOST])
-    coordinator = TPLinkLocalCoordinator(hass, entry, device)
+    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
+        device = Dl100Device(
+            entry.data[CONF_HOST],
+            username=entry.data[CONF_USERNAME],
+            password=entry.data[CONF_PASSWORD],
+            device_id=entry.data[CONF_DEVICE_ID],
+            terminal_uuid=entry.data.get(CONF_TERMINAL_UUID),
+            control_key=entry.data.get(CONF_CONTROL_KEY),
+        )
+    else:
+        device = TPLinkLocalDevice(entry.data[CONF_HOST])
 
+    coordinator = TPLinkLocalCoordinator(hass, entry, device)
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
