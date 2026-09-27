@@ -23,6 +23,25 @@ The current public DLKLAP research establishes:
 
 That last point is useful research evidence, but **one-time cloud provisioning is not the final TP-Link Local design**.
 
+## Verified live findings
+
+Validated against a real DL100 hardware 1.0 / firmware 1.0.17 Build 260417 Rel.082002:
+
+- Targeted local TDP exposes lock state, battery state, owner hash, DLKLAP scheme, and other runtime metadata without authentication.
+- TCP 80 is the only local control port observed; 443 and 9999 are closed/refused.
+- Generic GET/HEAD/OPTIONS requests to known DLKLAP paths return the same canned HTML 200 response and do not expose a conventional REST surface.
+- A previously authorized DLKLAP LAN session can be restored by a new controller process and continue making encrypted local requests without a new cloud login.
+- A prior HTTP 403 was traced to stale sequence persistence in the research probe, not session expiration.
+- Read-only encrypted calls succeeded for `getComponentList`, `getInheritInfo`, `getDeviceRunningInfo`, `getWifiModeStatus`, and `getLockStatus`.
+- `getDeviceRunningInfo` returned the especially interesting flags:
+  - `switch_appkey: true`
+  - `switch_appkey_confirm: false`
+  - `cloud_proxy: false`
+  - `switch_record_tocloud: false`
+- The device advertises first-class components including `security_settings`, `iot_cloud`, `digital_code`, `lock`, and `lock_status`.
+
+The `switch_appkey` fields are now the highest-priority lead. Existing public DL100 reverse-engineering notes also mention Tapo Android classes named `DoorLockLocalControlKeyUtils` and owner raw-key derivation in `DoorLockRepository`, but the decompiled implementations were not published.
+
 ## Primary research question
 
 Can a DL100 establish or recover equivalent authorized Wi-Fi session material **entirely locally**?
