@@ -2,30 +2,56 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
+import uuid
 
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST
 from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CONF_CONTROL_KEY,
+    CONF_DEVICE_ID,
     CONF_POLL_INTERVAL,
+    CONF_TERMINAL_UUID,
+    CONF_TRANSPORT,
+    DEFAULT_LOCK_POLL_INTERVAL,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     MAX_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
     SUPPORTED_DEVICE_TYPES,
     SUPPORTED_MODELS,
+    TRANSPORT_DLKLAP,
+    TRANSPORT_XOR,
+)
+from .discovery import LocalDiscovery, async_identify_device
+from .dlklap import (
+    Dl100Device,
+    DlklapAuthenticationError,
+    DlklapProtocolError,
 )
 from .protocol import (
     TPLinkLocalConnectionError,
-    TPLinkLocalDevice,
     TPLinkLocalDeviceError,
-    normalize_model,
 )
+
+
+def _decode_title(value: Any, fallback: str) -> str:
+    """Decode Tapo base64 nicknames when present."""
+    if not value:
+        return fallback
+    text = str(value)
+    try:
+        decoded = base64.b64decode(text, validate=True).decode("utf-8").strip()
+        return decoded or fallback
+    except Exception:
+        return text
+
 
 USER_SCHEMA = vol.Schema(
     {
@@ -33,40 +59,21 @@ USER_SCHEMA = vol.Schema(
     }
 )
 
-OPTIONS_SCHEMA = vol.Schema(
+DL100_SCHEMA = vol.Schema(
     {
-        vol.Required(
-            CONF_POLL_INTERVAL,
-            default=DEFAULT_POLL_INTERVAL,
-        ): vol.All(
-            vol.Coerce(int),
-            vol.Range(min=MIN_POLL_INTERVAL, max=MAX_POLL_INTERVAL),
-        ),
+        vol.Required(CONF_USERNAME): cv.string,
+        vol.Required(CONF_PASSWORD): cv.string,
     }
 )
-
-
-async def _probe(host: str) -> dict[str, Any]:
-    device = TPLinkLocalDevice(host)
-    sysinfo = await device.get_sysinfo()
-
-    model = str(sysinfo.get("model", ""))
-    model_base = normalize_model(model)
-    device_type = str(sysinfo.get("mic_type", sysinfo.get("type", "")))
-
-    if device_type not in SUPPORTED_DEVICE_TYPES or model_base not in SUPPORTED_MODELS:
-        raise ValueError(
-            f"Unsupported local device: model={model or 'unknown'}, "
-            f"type={device_type or 'unknown'}"
-        )
-
-    return sysinfo
 
 
 class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a TP-Link Local config flow."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._pending: LocalDiscovery | None = None
 
     async def async_step_user(
         self,
@@ -79,43 +86,107 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host = user_input[CONF_HOST].strip()
 
             try:
-                sysinfo = await _probe(host)
+                discovery = await async_identify_device(host)
             except TPLinkLocalConnectionError:
                 errors["base"] = "cannot_connect"
-            except TPLinkLocalDeviceError:
-                errors["base"] = "device_error"
-            except ValueError:
-                errors["base"] = "unsupported_device"
             except Exception:
                 errors["base"] = "unknown"
             else:
-                device_id = str(
-                    sysinfo.get("deviceId")
-                    or sysinfo.get("device_id")
-                    or sysinfo.get("mac")
-                    or host
-                )
-                await self.async_set_unique_id(device_id)
-                self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+                if (
+                    discovery.transport == TRANSPORT_XOR
+                    and discovery.device_type in SUPPORTED_DEVICE_TYPES
+                    and discovery.model_base in SUPPORTED_MODELS
+                ):
+                    unique_id = discovery.device_id or host
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
-                model = str(sysinfo.get("model", "TP-Link device"))
-                title = str(sysinfo.get("alias") or model)
+                    sysinfo = discovery.sysinfo or {}
+                    title = str(sysinfo.get("alias") or discovery.model)
+                    return self.async_create_entry(
+                        title=title,
+                        data={
+                            CONF_HOST: host,
+                            "model": discovery.model,
+                            "device_type": discovery.device_type,
+                            CONF_TRANSPORT: TRANSPORT_XOR,
+                        },
+                    )
 
-                return self.async_create_entry(
-                    title=title,
-                    data={
-                        CONF_HOST: host,
-                        "model": model,
-                        "device_type": str(
-                            sysinfo.get("mic_type", sysinfo.get("type", ""))
-                        ),
-                    },
-                )
+                if (
+                    discovery.device_type == "SMART.TAPOLOCK"
+                    and discovery.model_base == "DL100"
+                    and discovery.encryption_type == "DLKLAP"
+                    and discovery.device_id
+                ):
+                    self._pending = discovery
+                    return await self.async_step_dl100()
+
+                errors["base"] = "unsupported_device"
 
         return self.async_show_form(
             step_id="user",
             data_schema=USER_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_dl100(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Configure a locally discovered DL100's required session bootstrap."""
+        if self._pending is None:
+            return self.async_abort(reason="cannot_connect")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            terminal_uuid = str(uuid.uuid4()).upper()
+            device = Dl100Device(
+                self._pending.host,
+                username=user_input[CONF_USERNAME].strip(),
+                password=user_input[CONF_PASSWORD],
+                device_id=str(self._pending.device_id),
+                terminal_uuid=terminal_uuid,
+                allow_cloud_bootstrap=True,
+            )
+
+            try:
+                state = await device.get_state()
+            except DlklapAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except (TPLinkLocalConnectionError, DlklapProtocolError, TPLinkLocalDeviceError):
+                errors["base"] = "cannot_connect"
+            except Exception:
+                errors["base"] = "unknown"
+            else:
+                sysinfo = state["sysinfo"]
+                unique_id = str(self._pending.device_id)
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured(
+                    updates={CONF_HOST: self._pending.host}
+                )
+
+                title = _decode_title(sysinfo.get("nickname"), self._pending.model)
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        CONF_HOST: self._pending.host,
+                        "model": self._pending.model,
+                        "device_type": self._pending.device_type,
+                        CONF_TRANSPORT: TRANSPORT_DLKLAP,
+                        CONF_DEVICE_ID: str(self._pending.device_id),
+                        CONF_TERMINAL_UUID: terminal_uuid,
+                        CONF_USERNAME: user_input[CONF_USERNAME].strip(),
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                        CONF_CONTROL_KEY: device.control_key,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="dl100",
+            data_schema=DL100_SCHEMA,
+            errors=errors,
+            description_placeholders={"model": self._pending.model},
         )
 
     @staticmethod
@@ -137,8 +208,13 @@ class TPLinkLocalOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        default = (
+            DEFAULT_LOCK_POLL_INTERVAL
+            if self.config_entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP
+            else DEFAULT_POLL_INTERVAL
+        )
         current = int(
-            self.config_entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+            self.config_entry.options.get(CONF_POLL_INTERVAL, default)
         )
 
         schema = vol.Schema(
