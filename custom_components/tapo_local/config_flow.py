@@ -145,7 +145,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._pending.host,
                 username=user_input[CONF_USERNAME].strip(),
                 password=user_input[CONF_PASSWORD],
-                device_id=str(self._pending.device_id),
+                device_id=None,
                 terminal_uuid=terminal_uuid,
                 allow_cloud_bootstrap=True,
             )
@@ -166,6 +166,15 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates={CONF_HOST: self._pending.host}
                 )
 
+                if not device.device_id:
+                    errors["base"] = "cannot_connect"
+                    return self.async_show_form(
+                        step_id="dl100",
+                        data_schema=DL100_SCHEMA,
+                        errors=errors,
+                        description_placeholders={"model": self._pending.model},
+                    )
+
                 title = _decode_title(sysinfo.get("nickname"), self._pending.model)
                 return self.async_create_entry(
                     title=title,
@@ -174,7 +183,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "model": self._pending.model,
                         "device_type": self._pending.device_type,
                         CONF_TRANSPORT: TRANSPORT_DLKLAP,
-                        CONF_DEVICE_ID: str(self._pending.device_id),
+                        CONF_DEVICE_ID: str(device.device_id),
                         CONF_TERMINAL_UUID: terminal_uuid,
                         CONF_SESSION: device.export_session(),
                     },
