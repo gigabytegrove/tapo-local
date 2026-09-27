@@ -9,7 +9,8 @@ CONF_POLL_INTERVAL = "poll_interval"
 CONF_TRANSPORT = "transport"
 CONF_DEVICE_ID = "device_id"
 CONF_TERMINAL_UUID = "terminal_uuid"
-CONF_CONTROL_KEY = "control_key"
+CONF_CONTROL_KEY = "control_key"  # legacy pre-release key; no longer used
+CONF_SESSION = "session"
 
 TRANSPORT_XOR = "xor"
 TRANSPORT_DLKLAP = "dlklap"
@@ -21,13 +22,7 @@ DEFAULT_LOCK_POLL_INTERVAL = 30
 MIN_POLL_INTERVAL = 2
 MAX_POLL_INTERVAL = 300
 
-SUPPORTED_DEVICE_TYPES = {
-    "IOT.SMARTPLUGSWITCH",
-}
-
-SUPPORTED_MODELS = {
-    "KS200",
-    "KS200M",
-}
+SUPPORTED_DEVICE_TYPES = {"IOT.SMARTPLUGSWITCH"}
+SUPPORTED_MODELS = {"KS200", "KS200M"}
 
 PIR_MODULE = "smartlife.iot.PIR"

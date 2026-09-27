@@ -122,3 +122,4 @@ class TPLinkPirPercentSensor(TPLinkLocalEntity, SensorEntity):
     def native_value(self):
         pir_state = self.coordinator.data.get("pir_state") if self.coordinator.data else None
         return round(pir_state.percent, 2) if pir_state else None
+

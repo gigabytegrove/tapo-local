@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
-    CONF_CONTROL_KEY,
+    CONF_SESSION,
     CONF_DEVICE_ID,
     CONF_TERMINAL_UUID,
     CONF_TRANSPORT,
@@ -31,11 +31,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
         device = Dl100Device(
             entry.data[CONF_HOST],
-            username=entry.data[CONF_USERNAME],
-            password=entry.data[CONF_PASSWORD],
             device_id=entry.data[CONF_DEVICE_ID],
             terminal_uuid=entry.data.get(CONF_TERMINAL_UUID),
-            control_key=entry.data.get(CONF_CONTROL_KEY),
+            session_state=entry.data.get(CONF_SESSION),
         )
     else:
         device = TPLinkLocalDevice(entry.data[CONF_HOST])
