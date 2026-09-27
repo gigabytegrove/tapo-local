@@ -33,6 +33,17 @@ class TPLinkLocalEntity(CoordinatorEntity[TPLinkLocalCoordinator]):
             name=self.coordinator.entry.title,
             manufacturer="TP-Link",
             model=self.coordinator.model,
-            sw_version=str(sysinfo.get("sw_ver", "")) or None,
-            hw_version=str(sysinfo.get("hw_ver", "")) or None,
+            sw_version=str(
+                sysinfo.get("sw_ver")
+                or sysinfo.get("fw_ver")
+                or sysinfo.get("firmware_version")
+                or ""
+            )
+            or None,
+            hw_version=str(
+                sysinfo.get("hw_ver")
+                or sysinfo.get("hardware_version")
+                or ""
+            )
+            or None,
         )
