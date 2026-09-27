@@ -9,6 +9,7 @@ import json
 import os
 import socket
 import struct
+import time
 from typing import Any
 
 from .protocol import TPLinkLocalConnectionError, TPLinkLocalDevice, normalize_model
@@ -26,6 +27,8 @@ DQIDAQAB
 
 TDP_PORTS = (20002, 20004)
 TDP_TIMEOUT = 1.5
+TDP_ATTEMPTS = 4
+TDP_RETRY_DELAY = 0.35
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,23 +71,51 @@ def _build_tdp_packet() -> bytes:
 
 
 def _tdp_probe_sync(host: str) -> dict[str, Any] | None:
+    """Target one device, allowing sleeping battery devices time to wake."""
     packet = _build_tdp_packet()
 
-    for port in TDP_PORTS:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(TDP_TIMEOUT)
-        try:
-            sock.sendto(packet, (host, port))
-            response, source = sock.recvfrom(65535)
-            if source[0] != host or len(response) < 16:
-                continue
-            parsed = json.loads(response[16:].decode("utf-8"))
-            if isinstance(parsed, dict) and isinstance(parsed.get("result"), dict):
-                return parsed["result"]
-        except (OSError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError):
-            continue
-        finally:
-            sock.close()
+    # A short TCP connect is state-neutral and helps wake battery devices such
+    # as DL100 before UDP discovery. Failure is harmless; discovery still runs.
+    try:
+        with socket.create_connection((host, 80), timeout=1.0):
+            pass
+    except OSError:
+        pass
+
+    time.sleep(TDP_RETRY_DELAY)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(0.25)
+    try:
+        for attempt in range(TDP_ATTEMPTS):
+            for port in TDP_PORTS:
+                try:
+                    sock.sendto(packet, (host, port))
+                except OSError:
+                    pass
+
+            deadline = time.monotonic() + TDP_TIMEOUT
+            while time.monotonic() < deadline:
+                try:
+                    response, source = sock.recvfrom(65535)
+                except socket.timeout:
+                    continue
+
+                if source[0] != host or len(response) < 16:
+                    continue
+
+                try:
+                    parsed = json.loads(response[16:].decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+
+                if isinstance(parsed, dict) and isinstance(parsed.get("result"), dict):
+                    return parsed["result"]
+
+            if attempt + 1 < TDP_ATTEMPTS:
+                time.sleep(TDP_RETRY_DELAY)
+    finally:
+        sock.close()
 
     return None
 
