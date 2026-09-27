@@ -52,7 +52,7 @@ There is no helper daemon, sidecar container, subprocess, or separately managed 
 |---|---|---|---|
 | KS200 (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
 | KS200M (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
-| Tapo DL100 | — | — | Not yet supported under strict local-only policy |
+| Tapo DL100 | Transport under active development | Required | **Release-blocking support target** |
 
 ## KS200
 
@@ -82,9 +82,9 @@ The underlying python-kasa module is `Module.IotMotion` / `smartlife.iot.PIR`.
 
 Released python-kasa **0.10.2 does not include DL100/DLKLAP support**.
 
-An upstream DL100 pull request exists, but its DLKLAP transport explicitly requires TP-Link account authentication and a cloud-issued per-session control key. TP-Link Local will not adopt that transport while this project's requirement is no-account/no-cloud local control.
+An upstream DL100 pull request exists, but its DLKLAP transport explicitly requires TP-Link account authentication and a cloud-issued per-session control key. That implementation is being used as protocol research, not as the final TP-Link Local design.
 
-The DL100 is therefore identified locally but not configured by this build.
+**DL100 remains a required device for this project and is a release blocker.** TP-Link Local will not be considered complete until DL100 control is implemented. The unresolved engineering task is the transport/authentication path, not device scope.
 
 ## Installation
 
