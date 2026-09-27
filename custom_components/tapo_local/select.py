@@ -20,7 +20,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up selects."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
-    if coordinator.has_pir and not coordinator.is_lock:
+    if coordinator.has_pir:
         async_add_entities([TPLinkPirRangeSelect(coordinator)])
 
 

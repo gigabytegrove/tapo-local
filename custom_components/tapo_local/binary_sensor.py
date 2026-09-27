@@ -20,14 +20,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up binary sensors."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
-
-    entities: list[BinarySensorEntity] = []
     if coordinator.has_pir:
-        entities.append(TPLinkMotionBinarySensor(coordinator))
-    if coordinator.is_lock:
-        entities.append(TPLinkLowBatteryBinarySensor(coordinator))
-
-    async_add_entities(entities)
+        async_add_entities([TPLinkMotionBinarySensor(coordinator)])
 
 
 class TPLinkMotionBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
@@ -42,17 +36,3 @@ class TPLinkMotionBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         pir_state = self.coordinator.data.get("pir_state") if self.coordinator.data else None
         return bool(pir_state and pir_state.triggered)
-
-
-class TPLinkLowBatteryBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
-    """DL100 low-battery warning."""
-
-    _attr_device_class = BinarySensorDeviceClass.BATTERY
-
-    def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
-        super().__init__(coordinator, key="battery_low", name="Battery low")
-
-    @property
-    def is_on(self) -> bool:
-        return bool(self.coordinator.sysinfo.get("at_low_battery", False))
-

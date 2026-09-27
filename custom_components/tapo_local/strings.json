@@ -4,37 +4,20 @@
     "step": {
       "user": {
         "title": "Add a local TP-Link device",
-        "description": "Identify a supported TP-Link/Kasa/Tapo device directly on your LAN.",
+        "description": "Connect directly to a supported TP-Link/Kasa/Tapo device. TP-Link Local does not request account credentials or use TP-Link cloud APIs.",
         "data": {
           "host": "IP address or hostname"
-        }
-      },
-      "dl100": {
-        "title": "Add Tapo DL100",
-        "description": "DL100 was discovered locally. One explicit provisioning step is required by the lock firmware to establish an encrypted DLKLAP session. The resulting LAN session is saved for local-first runtime control.",
-        "data": {
-          "username": "TP-Link/Tapo account email",
-          "password": "TP-Link/Tapo account password"
-        }
-      },
-      "reconfigure": {
-        "title": "Reprovision DL100 local session",
-        "description": "The saved DLKLAP session expired or was rejected. Enter the Tapo account credentials to explicitly provision a replacement session. Normal runtime never performs this step automatically.",
-        "data": {
-          "username": "Tapo account email",
-          "password": "Tapo account password"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the device locally or establish its required local session.",
-      "device_error": "The device returned an error.",
-      "unsupported_device": "This device does not expose a supported local-control protocol.",
-      "invalid_auth": "TP-Link/Tapo account authentication failed.",
+      "cannot_connect": "Unable to connect to the device locally.",
+      "unsupported_device": "This device does not yet expose a supported local-only transport in this build.",
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "dl100_ble_required": "DL100 was identified, but its Wi-Fi DLKLAP transport requires cloud authentication. TP-Link Local will not use that path. DL100 support is being implemented through its Bluetooth Local Mode instead."
     }
   },
   "options": {

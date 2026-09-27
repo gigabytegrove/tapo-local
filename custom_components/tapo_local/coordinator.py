@@ -10,15 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import (
-    CONF_POLL_INTERVAL,
-    CONF_SESSION,
-    CONF_TRANSPORT,
-    DEFAULT_LOCK_POLL_INTERVAL,
-    DEFAULT_POLL_INTERVAL,
-    TRANSPORT_DLKLAP,
-)
-from .dlklap import Dl100Device, DlklapAuthenticationError, DlklapProtocolError
+from .const import CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
 from .protocol import (
     TPLinkLocalConnectionError,
     TPLinkLocalDevice,
@@ -31,28 +23,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll a supported device using its selected direct transport."""
+    """Poll a supported device entirely over the LAN."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        device: TPLinkLocalDevice | Dl100Device,
+        device: TPLinkLocalDevice,
     ) -> None:
         self.entry = entry
         self.device = device
         self.sysinfo: dict[str, Any] = {}
         self.model = str(entry.data.get("model", "Unknown"))
         self.model_base = normalize_model(self.model)
-        self.transport = str(entry.data.get(CONF_TRANSPORT, "xor"))
-        self.is_lock = self.transport == TRANSPORT_DLKLAP
-        self.has_pir = (not self.is_lock) and self.model_base.endswith("M")
+        self.has_pir = self.model_base.endswith("M")
 
-        default_interval = (
-            DEFAULT_LOCK_POLL_INTERVAL if self.is_lock else DEFAULT_POLL_INTERVAL
-        )
         poll_interval = int(
-            entry.options.get(CONF_POLL_INTERVAL, default_interval)
+            entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         )
 
         super().__init__(
@@ -65,18 +52,8 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            if self.is_lock:
-                assert isinstance(self.device, Dl100Device)
-                data = await self.device.get_state()
-            else:
-                assert isinstance(self.device, TPLinkLocalDevice)
-                data = await self.device.get_state(include_pir=self.has_pir)
-        except (
-            TPLinkLocalConnectionError,
-            TPLinkLocalDeviceError,
-            DlklapAuthenticationError,
-            DlklapProtocolError,
-        ) as exc:
+            data = await self.device.get_state(include_pir=self.has_pir)
+        except (TPLinkLocalConnectionError, TPLinkLocalDeviceError) as exc:
             raise UpdateFailed(str(exc)) from exc
 
         self.sysinfo = data["sysinfo"]
@@ -84,23 +61,12 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if current_model:
             self.model = str(current_model)
             self.model_base = normalize_model(self.model)
-            self.has_pir = (not self.is_lock) and self.model_base.endswith("M")
+            self.has_pir = self.model_base.endswith("M")
 
         if self.has_pir:
             data["pir_state"] = calculate_pir_state(
                 data.get("pir_config", {}),
                 data.get("pir_adc", {}),
             )
-
-        # DLKLAP's sequence number advances on every encrypted request. Persist
-        # the latest LAN session after each successful poll so a Home Assistant
-        # restart resumes from the current sequence instead of a stale one.
-        if self.is_lock and isinstance(self.device, Dl100Device):
-            session_state = self.device.export_session()
-            if session_state and session_state != self.entry.data.get(CONF_SESSION):
-                self.hass.config_entries.async_update_entry(
-                    self.entry,
-                    data={**self.entry.data, CONF_SESSION: session_state},
-                )
 
         return data
