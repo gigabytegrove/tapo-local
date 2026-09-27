@@ -55,3 +55,4 @@ class TPLinkLowBatteryBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return bool(self.coordinator.sysinfo.get("at_low_battery", False))
+

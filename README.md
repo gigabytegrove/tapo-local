@@ -1,26 +1,49 @@
 # TP-Link Local
 
-A Home Assistant custom integration for **local-first TP-Link/Kasa control with no Internet required**.
+A Home Assistant custom integration focused on **local-first TP-Link/Kasa/Tapo control**.
 
-TP-Link Local talks directly to supported devices on your LAN. It does not use TP-Link cloud discovery, cloud control, `python-kasa`, a helper daemon, or a sidecar container.
+The integration implements its device protocols directly. It does not import or install `python-kasa`, and it never routes normal device commands through TP-Link cloud.
 
 ## Why this exists
 
-Recent Kasa firmware can advertise modern KLAP authentication while some Home Assistant / TP-Link connection paths fail during protocol selection. Supported Kasa switches can also expose the classic local TCP/9999 protocol. TP-Link Local uses the local device protocol directly instead of sending normal control through the cloud or relying on `try_all_connect`.
+Some current Kasa firmware advertises modern KLAP authentication while Home Assistant/python-kasa connection selection can fail with `try_all_connect`, even though the device still exposes a working local API.
 
-## v0.1.0 supported hardware
+TP-Link Local chooses the proven local transport for the actual device instead of blindly trying protocol combinations.
 
-Validated against real devices:
+## v0.1.0 hardware validated during development
 
-| Model | Local transport | Status |
+| Model | Transport | Control path |
 |---|---|---|
-| KS200 (US) hardware 1.0 | Native XOR, TCP/9999 | Supported |
-| KS200M (US) hardware 1.0 | Native XOR, TCP/9999 | Supported |
-| Tapo DL100 | DLKLAP | Detected but intentionally not controlled |
+| KS200 (US) hardware 1.0 | Native XOR, TCP/9999 | Fully local |
+| KS200M (US) hardware 1.0 | Native XOR, TCP/9999 | Fully local |
+| Tapo DL100 | Native DLKLAP, HTTP/80 | Local commands; manufacturer-required cloud-assisted session bootstrap |
 
-The DL100 is not controlled in strict local-first mode because its currently documented DLKLAP session bootstrap requires a TP-Link cloud-issued control key. TP-Link Local will not silently introduce that dependency.
+### KS200 / KS200M
 
-## KS200 features
+These devices are controlled directly over the LAN using TP-Link's XOR-framed TCP/9999 protocol.
+
+No TP-Link account is required. No Internet connection is required.
+
+### DL100
+
+The DL100 is also controlled directly over the LAN, but its `DLKLAP` firmware is different from normal KLAP.
+
+The lock requires this session sequence:
+
+1. Local `handshake0` with the lock.
+2. TP-Link account authentication and a control-key exchange required by the DL100 firmware.
+3. Local `handshake1` / `handshake2`.
+4. All normal status and lock/unlock requests go directly between Home Assistant and the DL100 on the LAN.
+
+TP-Link Local obtains the DL100 `deviceId` from **local TDP discovery**, so it does not use TP-Link cloud device discovery.
+
+TP-Link Local persists the **already-established encrypted DLKLAP LAN session** (session cookie, derived seeds, and sequence counter) after the explicit provisioning step. TP-Link account credentials are **not stored for normal runtime**. Home Assistant restarts resume that saved LAN session directly and never silently contact TP-Link.
+
+If the lock rejects or expires the saved session, the runtime stays local and reports the device unavailable instead of falling back to the cloud. Use **Reconfigure** on the integration to explicitly provision a replacement session. We will validate on the real DL100 how long that saved session survives Home Assistant restarts, lock restarts, and normal Tapo-app use.
+
+## Features
+
+### KS200
 
 - Relay on/off
 - Relay state
@@ -29,7 +52,7 @@ The DL100 is not controlled in strict local-first mode because its currently doc
 - Current on-time
 - Direct LAN polling
 
-## KS200M features
+### KS200M
 
 Everything above, plus:
 
@@ -39,32 +62,55 @@ Everything above, plus:
 - Raw PIR ADC diagnostic sensor
 - Calculated PIR signal diagnostic sensor
 
-The motion state is calculated from the KS200M's local `smartlife.iot.PIR` `get_config` and `get_adc_value` responses.
+The PIR state comes from the device's local `smartlife.iot.PIR` API.
 
-## Local-first rules
+### DL100
 
-For supported devices:
+- Lock
+- Unlock
+- Locked/unlocked/jammed state
+- Battery percentage
+- Low-battery binary sensor
+- Wi-Fi RSSI
+- Local TDP identification
+- Native DLKLAP encryption/session handling
 
-- Home Assistant connects to the device IP directly.
-- Internet access is not required.
-- TP-Link account credentials are not required.
-- TP-Link cloud APIs are not contacted.
-- Cloud discovery is not used.
-- Cloud fallback is not used.
-- `python-kasa` is not installed or imported.
-- Normal control remains on the LAN.
+## Connection strategy
+
+```text
+Manual IP / hostname
+        |
+        +-- TCP/9999 XOR works?
+        |       |
+        |       +-- KS200 / KS200M
+        |             -> native XOR
+        |             -> fully local
+        |
+        +-- otherwise targeted local TDP
+                |
+                +-- SMART.TAPOLOCK + DLKLAP
+                      |
+                      +-- DL100 native DLKLAP
+                           local handshake0
+                           explicit provisioning bootstrap
+                           saved encrypted LAN session
+                           local encrypted commands
+```
+
+There is no `try_all_connect`.
 
 ## Installation
 
 ### HACS custom repository
 
-1. Open HACS.
-2. Add `https://github.com/gigabytegrove/tapo-local` as a custom **Integration** repository.
-3. Install **TP-Link Local**.
-4. Restart Home Assistant.
-5. Go to **Settings → Devices & services → Add integration**.
-6. Search for **TP-Link Local**.
-7. Enter the LAN IP address of the switch.
+1. Add `https://github.com/gigabytegrove/tapo-local` to HACS as a custom **Integration** repository.
+2. Install **TP-Link Local**.
+3. Restart Home Assistant.
+4. Go to **Settings → Devices & services → Add integration**.
+5. Search for **TP-Link Local**.
+6. Enter the device LAN IP or hostname.
+
+For a DL100, the setup flow will request the TP-Link/Tapo account credentials required by the lock's DLKLAP session bootstrap.
 
 ### Manual
 
@@ -74,7 +120,7 @@ Copy:
 custom_components/tapo_local/
 ```
 
-into:
+to:
 
 ```text
 /config/custom_components/tapo_local/
@@ -84,40 +130,27 @@ and restart Home Assistant.
 
 ## VLANs
 
-Automatic broadcast discovery is not required. Add devices by their LAN IP or hostname, so routed VLAN installations work as long as Home Assistant is permitted to reach the device.
+Broadcast discovery is not required. The integration uses the address you enter and performs targeted local discovery.
 
-For current KS200/KS200M support, Home Assistant must be able to reach TCP port `9999` on the device.
+Required access:
 
-## Architecture
-
-```text
-Home Assistant
-      |
-      | LAN only
-      v
-TP-Link Local
-      |
-      +-- native XOR framing
-      +-- native TCP socket
-      +-- native JSON API
-      |
-      v
-KS200 / KS200M :9999
-```
-
-There is no external Python service in this path.
+- KS200 / KS200M: TCP `9999`
+- DL100: UDP `20004` for identification and TCP `80` for control
+- DL100 initial provisioning/reprovisioning requires HTTPS access to TP-Link's authentication/control-key endpoints to mint a DLKLAP control key; normal runtime does not silently use those endpoints
 
 ## Security
 
-TP-Link Local never sends your Kasa device state or credentials to Gigabyte Grove. v0.1.0 does not require TP-Link credentials at all.
+The switch protocol is an unauthenticated LAN protocol, so IoT network segmentation remains important.
 
-The classic Kasa TCP/9999 protocol is an unauthenticated LAN protocol. Network segmentation and firewalling remain important: only trusted automation hosts should be allowed to reach IoT device networks.
+DL100 account credentials are used only during the explicit setup/reconfigure provisioning flow and are **not stored** in the Home Assistant config entry for normal runtime. The saved runtime material is the already-established encrypted LAN session. The password is not sent to the lock or to Gigabyte Grove.
 
-## Device compatibility policy
+The DL100 control-key host currently presents a TP-Link private CA rather than a public WebPKI certificate. TLS verification is therefore disabled **only for that control-key request**, matching the device-verified protocol implementation. The account-login request that carries the password remains normally TLS-verified.
 
-A device is only marked supported when there is a complete local control path. A device that requires cloud bootstrap or cloud control will not be represented as fully local.
+## Project rule
 
-Future native transports can be added inside the integration without changing that policy.
+A supported device uses direct LAN commands. TP-Link Local will not silently fall back to cloud device control.
+
+Where a device's own security protocol requires a remote session bootstrap, that dependency is explicit in the setup and documentation rather than hidden.
 
 ## License
 
