@@ -4,20 +4,20 @@
     "step": {
       "user": {
         "title": "Add a local TP-Link device",
-        "description": "Connect directly to a supported TP-Link/Kasa/Tapo device. TP-Link Local does not request account credentials or use TP-Link cloud APIs.",
+        "description": "Connect directly to a supported device by IP/hostname. TP-Link Local forces the known local protocol through python-kasa instead of using automatic protocol selection.",
         "data": {
           "host": "IP address or hostname"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the device locally.",
-      "unsupported_device": "This device does not yet expose a supported local-only transport in this build.",
+      "cannot_connect": "Unable to connect to the device using its forced local protocol.",
+      "unsupported_device": "The device responded but is not supported by this TP-Link Local build.",
       "unknown": "Unexpected error."
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "dl100_ble_required": "DL100 was identified, but its Wi-Fi DLKLAP transport requires cloud authentication. TP-Link Local will not use that path. DL100 support is being implemented through its Bluetooth Local Mode instead."
+      "dl100_no_local_wifi": "DL100 was identified locally. Released python-kasa does not support DLKLAP, and the current upstream DL100 work requires TP-Link cloud authentication, so TP-Link Local will not use that path."
     }
   },
   "options": {

@@ -11,32 +11,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
-from .protocol import (
-    TPLinkLocalConnectionError,
-    TPLinkLocalDevice,
-    TPLinkLocalDeviceError,
-    calculate_pir_state,
-    normalize_model,
-)
+from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll a supported device entirely over the LAN."""
+    """Poll a device through the deterministic python-kasa backend."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        device: TPLinkLocalDevice,
+        device: KasaLocalDevice,
     ) -> None:
         self.entry = entry
         self.device = device
         self.sysinfo: dict[str, Any] = {}
         self.model = str(entry.data.get("model", "Unknown"))
-        self.model_base = normalize_model(self.model)
-        self.has_pir = self.model_base.endswith("M")
+        self.has_pir = self.model.split("(", 1)[0].strip().endswith("M")
 
         poll_interval = int(
             entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
@@ -53,20 +46,13 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.device.get_state(include_pir=self.has_pir)
-        except (TPLinkLocalConnectionError, TPLinkLocalDeviceError) as exc:
+        except TPLinkLocalBackendError as exc:
             raise UpdateFailed(str(exc)) from exc
 
         self.sysinfo = data["sysinfo"]
         current_model = self.sysinfo.get("model")
         if current_model:
             self.model = str(current_model)
-            self.model_base = normalize_model(self.model)
-            self.has_pir = self.model_base.endswith("M")
 
-        if self.has_pir:
-            data["pir_state"] = calculate_pir_state(
-                data.get("pir_config", {}),
-                data.get("pir_adc", {}),
-            )
-
+        self.has_pir = self.device.has_pir
         return data
