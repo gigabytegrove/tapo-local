@@ -37,9 +37,21 @@ The lock requires this session sequence:
 
 TP-Link Local obtains the DL100 `deviceId` from **local TDP discovery**, so it does not use TP-Link cloud device discovery.
 
-TP-Link Local persists the **already-established encrypted DLKLAP LAN session** (session cookie, derived seeds, and sequence counter) after the explicit provisioning step. TP-Link account credentials are **not stored for normal runtime**. Home Assistant restarts resume that saved LAN session directly and never silently contact TP-Link.
+TP-Link Local persists the **already-established encrypted DLKLAP LAN session** (session cookie, derived seeds, and sequence counter) after the explicit provisioning step. TP-Link account credentials are **not stored for normal runtime**. Home Assistant restarts are designed to resume that saved LAN session directly and never silently contact TP-Link.
 
-If the lock rejects or expires the saved session, the runtime stays local and reports the device unavailable instead of falling back to the cloud. Use **Reconfigure** on the integration to explicitly provision a replacement session. We will validate on the real DL100 how long that saved session survives Home Assistant restarts, lock restarts, and normal Tapo-app use.
+### DL100 hardware verification
+
+Verified on a real **DL100 hardware 1.0 / firmware 1.0.17 Build 260417 Rel.082002**:
+
+- Local TDP discovery identified `SMART.TAPOLOCK` + `DLKLAP`.
+- Explicit provisioning successfully established a DLKLAP session.
+- `getDeviceInfo` succeeded locally.
+- A completely new controller instance, with **no account credentials and cloud bootstrap disabled**, restored the persisted encrypted LAN session and successfully ran another local `getDeviceInfo`.
+- Verified state included lock status, battery, low-battery state, RSSI, firmware and hardware version.
+
+This proves persisted-session reuse works across controller recreation without another cloud bootstrap. We still need to characterize session lifetime across a full Home Assistant restart, DL100 reboot/power event, long idle periods, and normal Tapo-app use.
+
+If the lock rejects or expires the saved session, the runtime stays local and reports the device unavailable instead of falling back to the cloud. Use **Reconfigure** on the integration to explicitly provision a replacement session.
 
 ## Features
 
