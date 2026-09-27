@@ -1,83 +1,90 @@
 # TP-Link Local
 
-A Home Assistant custom integration for **strict local-only TP-Link/Kasa/Tapo control**.
+A Home Assistant custom integration for **local-first TP-Link/Kasa/Tapo control** with deterministic protocol selection.
 
-The project rule is simple:
-
-> **No TP-Link account authentication, no TP-Link cloud API, and no Internet requirement for device control.**
-
-The integration implements supported device protocols directly and does not import or install `python-kasa`.
+TP-Link Local uses **python-kasa as an internal protocol engine**, while keeping its own Home Assistant config flow, device/entity behavior, and connection policy.
 
 ## Why this exists
 
-Some current Kasa firmware advertises modern KLAP authentication while Home Assistant/python-kasa connection selection can fail with `try_all_connect`, even when the device still exposes a working local API.
+Home Assistant's built-in TP-Link integration also uses python-kasa, but its normal connection flow can attempt multiple transports/protocols when a device advertises newer capabilities.
 
-TP-Link Local selects a proven local transport for the actual device rather than blindly trying protocol combinations or falling back to cloud services.
+On the tested KS200/KS200M firmware, the devices advertise modern KLAP while simultaneously exposing a fully working legacy local XOR API on TCP/9999. TP-Link Local does not use `try_all_connect` or automatic transport selection for these devices.
+
+Instead it constructs an explicit python-kasa `DeviceConfig`:
+
+```text
+device family: IOT.SMARTPLUGSWITCH
+encryption:    XOR
+transport:     TCP/9999
+host:          manually supplied IP/hostname
+```
+
+That forces the proven local path.
+
+## Runtime architecture
+
+```text
+Home Assistant
+      |
+      v
+TP-Link Local
+      |
+      +-- owns config flow
+      +-- owns entities
+      +-- owns protocol-selection policy
+      |
+      v
+python-kasa 0.10.2
+      |
+      +-- forced DeviceConfig
+      +-- no UDP discovery
+      +-- no try-all transport selection
+      |
+      v
+KS200 / KS200M TCP/9999 XOR
+```
+
+There is no helper daemon, sidecar container, subprocess, or separately managed python-kasa installation. Home Assistant installs the pinned package from the integration manifest.
 
 ## Current hardware status
 
-| Model | Local transport | Status |
-|---|---|---|
-| KS200 (US) hardware 1.0 | Native XOR, TCP/9999 | Supported |
-| KS200M (US) hardware 1.0 | Native XOR, TCP/9999 | Supported |
-| Tapo DL100 | Bluetooth Local Mode | Required support target; BLE transport under development |
+| Model | Backend | Forced transport | Status |
+|---|---|---|---|
+| KS200 (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
+| KS200M (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
+| Tapo DL100 | — | — | Not yet supported under strict local-only policy |
 
-### KS200 / KS200M
+## KS200
 
-These devices are controlled directly over the LAN using TP-Link's XOR-framed TCP/9999 protocol.
+- Relay on/off through python-kasa
+- Relay state
+- Status LED through python-kasa `Led` module
+- Wi-Fi RSSI
+- On-time
+- Direct local polling
 
-- No TP-Link account
-- No cloud API
-- No Internet
-- Direct Home Assistant → device LAN traffic
+## KS200M
 
-### DL100
-
-The DL100's Wi-Fi protocol is `DLKLAP`. Reverse-engineered DLKLAP session establishment requires TP-Link account authentication and a cloud-issued control key. That does **not** meet this project's local-only requirement, so TP-Link Local does not expose that path.
-
-TP-Link documents a separate **Bluetooth Local Mode** for the DL100 that can set up and control the lock without Wi-Fi or Internet. That is the transport this project will target for DL100 support.
-
-The previous experimental DLKLAP/cloud-bootstrap code has been removed from the Home Assistant runtime component. Its history remains available in Git if protocol research is needed.
-
-## Supported features
-
-### KS200
+python-kasa already has first-class support for the device's local PIR modules. TP-Link Local consumes those modules instead of maintaining a parallel implementation.
 
 - Relay on/off
-- Relay state
-- Status LED control
-- Wi-Fi RSSI
-- Current on-time
-- Direct LAN polling
-
-### KS200M
-
-Everything above, plus:
-
 - Motion binary sensor
 - PIR enable/disable
-- PIR range selection
-- Raw PIR ADC diagnostic sensor
-- Calculated PIR signal diagnostic sensor
+- PIR range
+- PIR ADC diagnostic sensor
+- Calculated PIR percentage
+- Status LED
+- RSSI / on-time
 
-## Connection strategy
+The underlying python-kasa module is `Module.IotMotion` / `smartlife.iot.PIR`.
 
-```text
-KS200 / KS200M
-      |
-      +-- TCP 9999
-      +-- native XOR
-      +-- local LAN only
+## DL100
 
-DL100
-      |
-      +-- Bluetooth Local Mode
-      +-- native BLE transport
-      +-- no TP-Link account/cloud
-      +-- implementation in progress
-```
+Released python-kasa **0.10.2 does not include DL100/DLKLAP support**.
 
-There is no `try_all_connect` and no cloud fallback.
+An upstream DL100 pull request exists, but its DLKLAP transport explicitly requires TP-Link account authentication and a cloud-issued per-session control key. TP-Link Local will not adopt that transport while this project's requirement is no-account/no-cloud local control.
+
+The DL100 is therefore identified locally but not configured by this build.
 
 ## Installation
 
@@ -88,38 +95,42 @@ There is no `try_all_connect` and no cloud fallback.
 3. Restart Home Assistant.
 4. Go to **Settings → Devices & services → Add integration**.
 5. Search for **TP-Link Local**.
-6. Enter the LAN IP/hostname for a supported Kasa switch.
+6. Enter the device IP address or hostname.
 
-DL100 will not request TP-Link credentials. Until the BLE transport is complete, detecting a DL100 reports that Bluetooth Local Mode support is required rather than offering cloud authentication.
-
-### Manual
-
-Copy:
+No separate python-kasa installation is required. The integration manifest pins:
 
 ```text
-custom_components/tapo_local/
+python-kasa[speedups]==0.10.2
 ```
 
-to:
-
-```text
-/config/custom_components/tapo_local/
-```
-
-and restart Home Assistant.
+which is also the version currently used by Home Assistant's built-in TP-Link integration.
 
 ## VLANs
 
-The supported KS200/KS200M path does not require broadcast discovery. Manual IP/hostname works across routed VLANs as long as Home Assistant can reach TCP port `9999` on the device.
+Supported switches are addressed directly. Broadcast discovery is not required.
 
-DL100 Bluetooth support will use Home Assistant's Bluetooth stack / supported Bluetooth proxies rather than its Wi-Fi DLKLAP cloud-bootstrap path.
+Home Assistant needs routed access to TCP port `9999` on KS200/KS200M devices.
 
-## Security
+## Local-only policy
 
-The classic Kasa TCP/9999 protocol is unauthenticated on the LAN, so network segmentation remains important.
+For supported devices:
 
-TP-Link Local does not ask for or store TP-Link/Tapo account credentials.
+- No TP-Link account credentials
+- No TP-Link cloud API
+- No Internet requirement
+- No cloud fallback
+- No generic `try_all_connect`
+- No protocol guessing
+- Direct device IP control
+
+## python-kasa relationship
+
+TP-Link Local depends on python-kasa but is not the Home Assistant built-in TP-Link integration.
+
+The key difference is **connection policy**: TP-Link Local explicitly selects the transport that has been verified on the device instead of asking python-kasa to discover/guess the connection type.
+
+python-kasa is licensed GPL-3.0-or-later and remains a separately installed dependency. See `THIRD_PARTY.md`.
 
 ## License
 
-Apache License 2.0.
+TP-Link Local source is currently Apache License 2.0. See `THIRD_PARTY.md` for dependency licensing.
