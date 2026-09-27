@@ -95,11 +95,9 @@ async def async_targeted_tdp_discovery(host: str) -> dict[str, Any] | None:
 
 
 async def async_identify_device(host: str) -> LocalDiscovery:
-    """Identify a supported device without touching TP-Link cloud services."""
+    """Identify a device without using TP-Link cloud discovery."""
     try:
         sysinfo = await TPLinkLocalDevice(host, timeout=2.0).get_sysinfo()
-    except TPLinkLocalConnectionError:
-        sysinfo = None
     except Exception:
         sysinfo = None
 
@@ -141,8 +139,6 @@ async def async_identify_device(host: str) -> LocalDiscovery:
         device_id=str(result.get("device_id") or "") or None,
         encryption_type=str(scheme.get("encrypt_type") or "") or None,
         login_version=int(scheme["lv"]) if scheme.get("lv") is not None else None,
-        http_port=int(scheme["http_port"])
-        if scheme.get("http_port") is not None
-        else None,
+        http_port=int(scheme["http_port"]) if scheme.get("http_port") is not None else None,
         tdp_result=result,
     )
