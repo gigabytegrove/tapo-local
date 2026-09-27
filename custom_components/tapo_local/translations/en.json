@@ -17,7 +17,7 @@
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "dl100_no_local_wifi": "DL100 was identified locally. Released python-kasa does not support DLKLAP, and the current upstream DL100 work requires TP-Link cloud authentication, so TP-Link Local will not use that path."
+      "dl100_no_local_wifi": "DL100 was identified locally and remains a required TP-Link Local device. Its local control transport is still under active implementation in this build."
     }
   },
   "options": {
