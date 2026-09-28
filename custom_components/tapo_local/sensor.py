@@ -189,7 +189,15 @@ class TPLinkFeatureSensor(TPLinkKasaFeatureEntity, SensorEntity):
             self._attr_native_unit_of_measurement = str(unit)
 
         value = self.feature_value
-        if isinstance(value, datetime):
+        if feature_id == "battery_level":
+            self._attr_device_class = SensorDeviceClass.BATTERY
+            self._attr_native_unit_of_measurement = PERCENTAGE
+        elif feature_id == "temperature":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        elif feature_id == "humidity":
+            self._attr_device_class = SensorDeviceClass.HUMIDITY
+            self._attr_native_unit_of_measurement = PERCENTAGE
+        elif isinstance(value, datetime):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
         elif isinstance(value, timedelta):
             self._attr_device_class = SensorDeviceClass.DURATION
