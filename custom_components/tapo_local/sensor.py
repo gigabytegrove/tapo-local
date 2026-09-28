@@ -58,6 +58,17 @@ async def async_setup_entry(
             continue
         entities.append(TPLinkFeatureSensor(coordinator, feature_id))
 
+    for child in coordinator.device.children:
+        for feature_id, feature in child.features.items():
+            if feature.type != Feature.Type.Sensor:
+                continue
+            value = child.feature_value(feature_id)
+            if isinstance(value, bool):
+                continue
+            entities.append(
+                TPLinkFeatureSensor(coordinator, feature_id, target=child)
+            )
+
     async_add_entities(entities)
 
 
@@ -159,8 +170,14 @@ class TPLinkPirPercentSensor(TPLinkKasaFeatureEntity, SensorEntity):
 class TPLinkFeatureSensor(TPLinkKasaFeatureEntity, SensorEntity):
     """Any additional read-only scalar feature provided by python-kasa."""
 
-    def __init__(self, coordinator: TPLinkLocalCoordinator, feature_id: str) -> None:
-        super().__init__(coordinator, feature_id)
+    def __init__(
+        self,
+        coordinator: TPLinkLocalCoordinator,
+        feature_id: str,
+        *,
+        target=None,
+    ) -> None:
+        super().__init__(coordinator, feature_id, target=target)
         feature = self.feature
         if feature is None:
             return
