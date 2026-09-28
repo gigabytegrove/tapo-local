@@ -3,8 +3,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a local TP-Link device",
-        "description": "Connect directly to a supported device by IP/hostname. TAPO Local verifies and, when necessary, asks Home Assistant to install its required local-control runtime before contacting the device.",
+        "title": "Add a local TP-Link/Kasa/Tapo device",
+        "description": "Connect directly to a supported TP-Link, Kasa, or Tapo device by IP address or hostname. TAPO Local uses deterministic local transports and never falls back to the TP-Link cloud.",
         "data": {
           "host": "IP address or hostname"
         }
@@ -12,6 +12,14 @@
       "dl100_session": {
         "title": "Import DL100 local session",
         "description": "DL100 was identified locally. TAPO Local requires the already-authorized local DLKLAP session import at {path}. Copy the saved session cache there, then select Submit to verify it locally. No TP-Link cloud login or handshake0 is performed by this integration."
+      },
+      "smart_credentials": {
+        "title": "Local device authentication",
+        "description": "This device uses an authenticated local protocol. Enter the TP-Link account credentials currently authorized for the device. TAPO Local uses them only to verify the device locally and stores only python-kasa's protocol-specific credential hash after setup.",
+        "data": {
+          "username": "TP-Link account email",
+          "password": "TP-Link account password"
+        }
       }
     },
     "error": {
@@ -20,8 +28,10 @@
       "dl100_session_missing": "The DL100 local-session import file is not present yet. Copy the authorized session cache to the path shown above, then try again.",
       "dl100_session_invalid": "The DL100 session import file exists but does not contain a valid saved DLKLAP session.",
       "dl100_session_rejected": "The DL100 rejected the saved local session. A current authorized LAN session is required before the device can be added.",
-      "unsupported_device": "The device responded but is not supported by this TAPO Local build.",
-      "unknown": "Unexpected error."
+      "unsupported_device": "The device responded locally, but its device family or Home Assistant platform is not supported by this TAPO Local build.",
+      "unknown": "Unexpected error.",
+      "invalid_auth": "The device rejected the supplied credentials.",
+      "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. TAPO Local will not store the plaintext password."
     },
     "abort": {
       "already_configured": "This device is already configured."
