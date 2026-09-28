@@ -27,16 +27,28 @@ async def async_setup_entry(
     entities = [
         TPLinkFeatureNumber(coordinator, feature_id)
         for feature_id, feature in coordinator.device.features.items()
-        if feature.type == Feature.Type.Number
+        if feature.type == Feature.Type.Number and feature_id not in {"brightness", "color_temperature"}
     ]
+    for child in coordinator.device.children:
+        entities.extend(
+            TPLinkFeatureNumber(coordinator, feature_id, target=child)
+            for feature_id, feature in child.features.items()
+            if feature.type == Feature.Type.Number
+        )
     async_add_entities(entities)
 
 
 class TPLinkFeatureNumber(TPLinkKasaFeatureEntity, NumberEntity):
     """A writable numeric python-kasa feature."""
 
-    def __init__(self, coordinator: TPLinkLocalCoordinator, feature_id: str) -> None:
-        super().__init__(coordinator, feature_id)
+    def __init__(
+        self,
+        coordinator: TPLinkLocalCoordinator,
+        feature_id: str,
+        *,
+        target=None,
+    ) -> None:
+        super().__init__(coordinator, feature_id, target=target)
         feature = self.feature
         if feature is not None:
             self._attr_native_min_value = feature.minimum_value
