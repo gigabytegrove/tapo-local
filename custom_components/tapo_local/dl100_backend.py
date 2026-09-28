@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 import hashlib
 import http.client
 import json
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -23,6 +24,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from .errors import TPLinkLocalRuntimeError
 
 SESSION_COOKIE_NAME = "TP_SESSIONID"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class DL100LocalError(TPLinkLocalRuntimeError):
@@ -272,7 +275,16 @@ class DL100LocalDevice:
                 )
 
             nested = item.get("result")
-            return nested if isinstance(nested, dict) else {}
+            result_dict = nested if isinstance(nested, dict) else {}
+
+            if method == "setLockStatus":
+                _LOGGER.info(
+                    "DL100 setLockStatus acknowledged by %s at sequence %s",
+                    self.host,
+                    self._session.seq,
+                )
+
+            return result_dict
 
     @staticmethod
     def _merge_result(target: dict[str, Any], result: dict[str, Any]) -> None:
@@ -296,11 +308,77 @@ class DL100LocalDevice:
         return {"sysinfo": sysinfo}
 
     async def set_lock(self, locked: bool) -> None:
-        """Set physical lock state using the proven local_1 service user."""
+        """Set the physical bolt and verify the resulting lock state locally."""
+        target_status = 0 if locked else 1
+        action = "LOCK" if locked else "UNLOCK"
+
+        _LOGGER.info(
+            "DL100 %s requested for %s (starting sequence %s)",
+            action,
+            self.host,
+            self._session.seq,
+        )
+
         await self.request(
             "setLockStatus",
             {
-                "lock_status": 0 if locked else 1,
+                "lock_status": target_status,
                 "sa_user_id": "local_1",
             },
+        )
+
+        # The independently device-verified DL100 implementation waits about
+        # three seconds for the bolt motor before refreshing state. Give the
+        # lock the same movement window, then allow a few short verification
+        # retries for slower physical travel.
+        await asyncio.sleep(3)
+
+        last_status: int | None = None
+        for attempt in range(3):
+            result = await self.request("getLockStatus")
+            status_info: dict[str, Any] = {}
+            self._merge_result(status_info, result)
+
+            raw_status = status_info.get("lock_status")
+            try:
+                last_status = int(raw_status) if raw_status is not None else None
+            except (TypeError, ValueError):
+                last_status = None
+
+            _LOGGER.info(
+                "DL100 %s verification %s/3 for %s: lock_status=%s sequence=%s",
+                action,
+                attempt + 1,
+                self.host,
+                last_status,
+                self._session.seq,
+            )
+
+            if last_status == target_status:
+                _LOGGER.info(
+                    "DL100 %s verified for %s at sequence %s",
+                    action,
+                    self.host,
+                    self._session.seq,
+                )
+                return
+
+            if last_status in (3, 4):
+                raise DL100LocalError(
+                    f"DL100 {action} command was acknowledged but the lock "
+                    f"reported jammed state {last_status}"
+                )
+
+            if attempt < 2:
+                await asyncio.sleep(2)
+
+        if last_status is None:
+            raise DL100LocalError(
+                f"DL100 {action} command was acknowledged but getLockStatus "
+                "did not return a usable lock_status"
+            )
+
+        raise DL100LocalError(
+            f"DL100 {action} command was acknowledged but physical state "
+            f"remained lock_status={last_status}"
         )
