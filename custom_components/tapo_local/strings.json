@@ -4,21 +4,27 @@
     "step": {
       "user": {
         "title": "Add a local TP-Link device",
-        "description": "Connect directly to a supported device by IP/hostname. TP-Link Local verifies and, when necessary, asks Home Assistant to install its required python-kasa runtime before contacting the device.",
+        "description": "Connect directly to a supported device by IP/hostname. TP-Link Local verifies and, when necessary, asks Home Assistant to install its required local-control runtime before contacting the device.",
         "data": {
           "host": "IP address or hostname"
         }
+      },
+      "dl100_session": {
+        "title": "Import DL100 local session",
+        "description": "DL100 was identified locally. TP-Link Local requires the already-authorized local DLKLAP session import at {path}. Copy the saved session cache there, then select Submit to verify it locally. No TP-Link cloud login or handshake0 is performed by this integration."
       }
     },
     "error": {
       "cannot_connect": "Unable to connect to the device using its forced local protocol.",
-      "dependency_unavailable": "TP-Link Local could not prepare its required python-kasa runtime. No device commands were attempted. Check Settings > System > Repairs and the Home Assistant log for the exact dependency error.",
+      "dependency_unavailable": "TP-Link Local could not prepare its required local-control runtime. No device commands were attempted. Check Settings > System > Repairs and the Home Assistant log for the exact dependency error.",
+      "dl100_session_missing": "The DL100 local-session import file is not present yet. Copy the authorized session cache to the path shown above, then try again.",
+      "dl100_session_invalid": "The DL100 session import file exists but does not contain a valid saved DLKLAP session.",
+      "dl100_session_rejected": "The DL100 rejected the saved local session. A current authorized LAN session is required before the device can be added.",
       "unsupported_device": "The device responded but is not supported by this TP-Link Local build.",
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This device is already configured.",
-      "dl100_no_local_wifi": "DL100 was identified locally and remains a required TP-Link Local device. Its local control transport is still under active implementation in this build."
+      "already_configured": "This device is already configured."
     }
   },
   "options": {
@@ -33,8 +39,8 @@
   },
   "issues": {
     "python_kasa_dependency": {
-      "title": "TP-Link Local could not prepare python-kasa",
-      "description": "TP-Link Local requires {requirement}. Home Assistant was unable to leave that dependency in a working state. {detail}"
+      "title": "TP-Link Local could not prepare its runtime dependencies",
+      "description": "TP-Link Local requires {requirement}. Home Assistant was unable to leave that runtime in a working state. {detail}"
     }
   }
 }
