@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/tapo_local/brand/logo.png" alt="TAPO Local" width="520">
+</p>
+
 # TAPO Local
 
 TAPO Local is a Home Assistant custom integration for **local-first TP-Link, Kasa, and Tapo devices**.
