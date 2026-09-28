@@ -70,17 +70,23 @@ async def async_migrate_entry(
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up TP-Link Local from a config entry."""
-    try:
-        await async_ensure_kasa(hass)
-    except TPLinkLocalDependencyError as exc:
-        raise ConfigEntryNotReady(str(exc)) from exc
+    is_dl100 = entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP
+
+    # DL100 has its own local DLKLAP backend and must not depend on
+    # python-kasa being healthy. Switch entries still use the managed
+    # python-kasa runtime.
+    if not is_dl100:
+        try:
+            await async_ensure_kasa(hass)
+        except TPLinkLocalDependencyError as exc:
+            raise ConfigEntryNotReady(str(exc)) from exc
 
     coordinator_module = await async_import_module(
         hass, f"{__package__}.coordinator"
     )
     TPLinkLocalCoordinator = coordinator_module.TPLinkLocalCoordinator
 
-    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
+    if is_dl100:
         dl100_module = await async_import_module(
             hass, f"{__package__}.dl100_backend"
         )
