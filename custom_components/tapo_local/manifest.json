@@ -1,7 +1,7 @@
 {
   "domain": "tapo_local",
   "name": "TP-Link Local",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "config_flow": true,
   "documentation": "https://github.com/gigabytegrove/tapo-local",
   "issue_tracker": "https://github.com/gigabytegrove/tapo-local/issues",
@@ -13,6 +13,7 @@
     "kasa"
   ],
   "requirements": [
-    "python-kasa[speedups]==0.10.2"
+    "python-kasa[speedups]==0.10.2",
+    "cryptography>=1.9"
   ]
 }
