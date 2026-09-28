@@ -1,4 +1,4 @@
-"""TP-Link Local Home Assistant integration."""
+"""TAPO Local Home Assistant integration."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from .const import (
     CONF_TRANSPORT,
     DL100_SESSION_STORE_VERSION,
     DOMAIN,
+    KASA_CREDENTIAL_STORE_VERSION,
     TRANSPORT_DLKLAP,
     TRANSPORT_SMART,
 )
@@ -45,9 +46,9 @@ async def async_migrate_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> bool:
-    """Migrate older TP-Link Local config entries to the current schema."""
+    """Migrate older TAPO Local config entries to the current schema."""
     _LOGGER.debug(
-        "Migrating TP-Link Local entry %s from version %s.%s",
+        "Migrating TAPO Local entry %s from version %s.%s",
         entry.title,
         entry.version,
         entry.minor_version,
@@ -55,7 +56,7 @@ async def async_migrate_entry(
 
     if entry.version > 3:
         _LOGGER.error(
-            "Cannot migrate TP-Link Local entry %s from future version %s",
+            "Cannot migrate TAPO Local entry %s from future version %s",
             entry.title,
             entry.version,
         )
@@ -68,7 +69,7 @@ async def async_migrate_entry(
         hass.config_entries.async_update_entry(entry, version=3)
 
     _LOGGER.debug(
-        "Migration of TP-Link Local entry %s to version %s.%s successful",
+        "Migration of TAPO Local entry %s to version %s.%s successful",
         entry.title,
         entry.version,
         entry.minor_version,
@@ -77,7 +78,7 @@ async def async_migrate_entry(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up TP-Link Local from a config entry."""
+    """Set up TAPO Local from a config entry."""
     is_dl100 = entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP
 
     # DL100 has its own local DLKLAP backend and must not depend on
@@ -137,6 +138,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         KasaLocalDevice = kasa_module.KasaLocalDevice
 
         if entry.data.get(CONF_TRANSPORT) == TRANSPORT_SMART:
+            credential_store: Store[dict] = Store(
+                hass,
+                KASA_CREDENTIAL_STORE_VERSION,
+                f"{DOMAIN}.kasa_credentials.{entry.entry_id}",
+                private=True,
+                atomic_writes=True,
+            )
+            stored_credentials = await credential_store.async_load()
+            credentials_hash = None
+            if isinstance(stored_credentials, dict):
+                credentials_hash = stored_credentials.get(CONF_CREDENTIALS_HASH)
+            if credentials_hash is None:
+                credentials_hash = entry.data.get(CONF_CREDENTIALS_HASH)
+
+            if not credentials_hash:
+                raise ConfigEntryNotReady(
+                    "Local device credential hash is missing; re-add the device"
+                )
+
             device = KasaLocalDevice(
                 entry.data[CONF_HOST],
                 device_family=entry.data[CONF_DEVICE_FAMILY],
@@ -144,13 +164,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 login_version=entry.data.get(CONF_LOGIN_VERSION),
                 https=bool(entry.data.get(CONF_HTTPS, False)),
                 http_port=entry.data.get(CONF_HTTP_PORT),
-                credentials_hash=entry.data[CONF_CREDENTIALS_HASH],
+                credentials_hash=str(credentials_hash),
             )
         else:
             device = KasaLocalDevice(entry.data[CONF_HOST])
 
     coordinator = TPLinkLocalCoordinator(hass, entry, device)
     await coordinator.async_config_entry_first_refresh()
+
+    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_SMART:
+        await credential_store.async_save(
+            {CONF_CREDENTIALS_HASH: str(credentials_hash)}
+        )
+        if CONF_CREDENTIALS_HASH in entry.data:
+            new_data = dict(entry.data)
+            new_data.pop(CONF_CREDENTIALS_HASH, None)
+            hass.config_entries.async_update_entry(entry, data=new_data)
 
     if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
         latest = device.export_session()
