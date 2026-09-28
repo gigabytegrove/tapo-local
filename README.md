@@ -1,179 +1,194 @@
-# TP-Link Local
+# TAPO Local
 
-A Home Assistant custom integration for **local-first TP-Link/Kasa/Tapo control** with deterministic protocol selection.
+TAPO Local is a Home Assistant custom integration for **local-first TP-Link, Kasa, and Tapo devices**.
 
-TP-Link Local uses **python-kasa as its device capability engine** while keeping its own Home Assistant config flow, device policy, entity model, and connection rules.
+It is built for people who want direct LAN control, deterministic protocol selection, and clear separation between local device access and TP-Link cloud services.
 
-## Why this exists
+> Home Assistant integration domain: **tapo_local**. The domain is intentionally unchanged so existing installations upgrade safely.
 
-Home Assistant's built-in TP-Link integration also uses python-kasa, but its normal connection flow can attempt multiple transports/protocols when a device advertises newer capabilities.
+## What TAPO Local supports
 
-On the tested KS200/KS200M firmware, the devices advertise modern KLAP while simultaneously exposing a fully working legacy local XOR API on TCP/9999. TP-Link Local does not use `try_all_connect` or automatic transport selection for these devices.
+TAPO Local uses two local backends:
 
-Instead it constructs an explicit python-kasa `DeviceConfig`:
+- **python-kasa 0.10.2** for supported Kasa/Tapo plugs, switches, dimmers, bulbs, light strips, power strips, fans, hubs, and hub-connected sensors.
+- A **native DLKLAP backend** for the Tapo DL100 smart lock.
 
-```text
+The integration maps device capabilities into native Home Assistant entities instead of exposing everything as generic controls.
+
+| Device capability | Home Assistant entity |
+|---|---|
+| Plug / relay / outlet | switch |
+| Bulb / dimmer / light strip | light |
+| Fan speed | fan |
+| Motion / contact / leak / low battery | binary_sensor |
+| Temperature / humidity / battery / energy / diagnostics | sensor |
+| Choice settings | select |
+| Numeric settings | number |
+| Actions | button |
+| DL100 deadbolt | lock |
+
+Power strips are expanded into **individual child outlet devices/entities**. Hubs are expanded into **child sensor devices/entities**.
+
+See [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) for the current device matrix.
+
+## Hardware verified by this project
+
+These models have been tested directly with TAPO Local hardware:
+
+| Model | Local transport | Verified behavior |
+|---|---|---|
+| Kasa KS200 | IOT/XOR TCP 9999 | Local relay control, status, LED, diagnostics |
+| Kasa KS200M | IOT/XOR TCP 9999 | Local relay control, PIR/motion features, LED, diagnostics |
+| Tapo DL100 | DLKLAP HTTP 80 | Local state, battery, lock, unlock, persistent local session |
+
+The DL100 lock/unlock path has been physically verified against real hardware.
+
+## Deterministic connection policy
+
+TAPO Local does not use a generic "try every protocol until something works" runtime.
+
+### Legacy Kasa IOT devices
+
+Older Kasa devices are connected using an explicit local XOR configuration. python-kasa reads the device sysinfo and specializes it into the correct plug, wall-switch, dimmer, strip, bulb, or light-strip implementation.
+
+~~~text
 device family: IOT.SMARTPLUGSWITCH
 encryption:    XOR
 transport:     TCP/9999
-host:          manually supplied IP/hostname
-```
+~~~
 
-That forces the proven local path.
+No TP-Link account credentials are required for this path.
 
-## python-kasa integration
+### Modern Kasa/Tapo SMART devices
 
-TP-Link Local now consumes python-kasa's public `Device.features` interface directly instead of hand-implementing a small subset of module APIs.
+For newer local SMART devices, TAPO Local uses targeted local TDP discovery to read the device-advertised family and encryption parameters. Supported AES/KLAP devices then request the account credentials authorized for that device **during initial setup only**.
 
-At setup time python-kasa initializes the device and its supported modules/features. TP-Link Local then maps those features into Home Assistant entities:
+Those credentials are used locally against the device. TAPO Local then stores python-kasa's protocol-specific **credential hash** in Home Assistant private storage and removes the hash from the normal config entry after the first successful runtime setup.
 
-| python-kasa feature type | Home Assistant entity |
-|---|---|
-| `Switch` | switch |
-| `BinarySensor` | binary sensor |
-| read-only boolean `Sensor` | binary sensor |
-| `Sensor` | sensor |
-| `Choice` | select |
-| `Number` | number |
-| `Action` | button |
+TAPO Local does not retain the plaintext password.
 
-This means new features added by python-kasa can flow into Tapo-Local without requiring a new hand-written entity for every setting.
+Supported SMART families currently include:
 
-Existing TP-Link Local entity identities for relay, LED, motion, PIR enable/range, RSSI, on-time, PIR ADC and PIR percentage are preserved so upgrades do not intentionally replace the existing entities.
+~~~text
+SMART.KASAPLUG
+SMART.KASASWITCH
+SMART.KASAHUB
+SMART.TAPOPLUG
+SMART.TAPOBULB
+SMART.TAPOSWITCH
+SMART.TAPOHUB
+~~~
 
-python-kasa remains a normal Home Assistant Python dependency. There is no helper daemon, sidecar container, subprocess, or separately managed python-kasa installation.
+### Tapo DL100
 
-## Runtime architecture
+Released python-kasa 0.10.2 does not include the DL100 DLKLAP lock protocol, so TAPO Local provides its own local backend.
 
-```text
-Home Assistant
-      |
-      v
-TP-Link Local
-      |
-      +-- owns config flow / entities
-      +-- owns deterministic connection policy
-      +-- maps python-kasa Device.features to HA
-      |
-      v
-python-kasa 0.10.2
-      |
-      +-- device protocol implementation
-      +-- modules
-      +-- generic feature API
-      |
-      v
-KS200 / KS200M TCP/9999 XOR
-```
+A previously authorized DLKLAP LAN session can be imported once. TAPO Local verifies it against the lock, transfers it into Home Assistant private storage, and removes the one-time import file.
 
-## Current hardware status
+Runtime behavior is local:
 
-| Model | Backend | Forced transport | Status |
-|---|---|---|---|
-| KS200 (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
-| KS200M (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
-| Tapo DL100 | Native local saved-session DLKLAP runtime | HTTP/80 DLKLAP | Supported with an existing authorized LAN session |
+- getLockStatus
+- getDeviceRunningInfo
+- setLockStatus
+- persistent DLKLAP sequence handling
+- physical lock/unlock state verification
 
-## KS200
+Current limitation: TAPO Local does not yet provision a brand-new DL100 authorization session from scratch. An existing authorized LAN session is required for initial import.
 
-The KS200 is driven through python-kasa's feature API. Current exposed capabilities include relay state/control, LED configuration, Wi-Fi RSSI, on-time diagnostics, reboot action, and any additional compatible python-kasa features presented by the device.
+## Home Assistant entity behavior
 
-## KS200M
+TAPO Local consumes python-kasa's public Device.features interface and maps features into Home Assistant.
 
-python-kasa has first-class support for the local `smartlife.iot.PIR` module. Tapo-Local now consumes its feature definitions directly, including:
+Specialized mappings are used when they provide a better HA experience:
 
-- relay on/off
-- motion state
-- PIR enable/disable
-- PIR range
-- **PIR threshold**
-- PIR ADC diagnostics
-- calculated PIR percentage
-- status LED
-- RSSI / on-time
-- python-kasa actions and any future feature additions
+- brightness/color temperature/HSV -> native light
+- fan speed -> native fan
+- strip outlets -> individual child switch devices
+- hub sensors -> child sensor/binary-sensor devices
+- KS200M PIR -> motion/configuration entities
+- DL100 -> native lock
 
-## DL100
-
-Released python-kasa **0.10.2 does not include DL100/DLKLAP support**, so DL100 uses a separate native local-only backend inside TP-Link Local.
-
-TP-Link Local 0.4.0 can restore and use an **existing authorized DLKLAP LAN session**. This path has no TP-Link account login, cloud API fallback, handshake0 provisioning, or account credentials in runtime.
-
-When a DL100 is identified during setup, TP-Link Local looks for a one-time session import at:
-
-```text
-/config/.storage/tapo_local_dl100_session_import.json
-```
-
-The import accepts the same saved-session cache format used by the repository's verified `dl100_saved_session_probe.py` tool. The session object contains the encrypted LAN session seeds/key material, current sequence, and `TP_SESSIONID` cookie.
-
-Setup verifies that session directly against the lock. If verification succeeds:
-
-- a Home Assistant `lock` entity is created
-- lock/unlock uses local `setLockStatus`
-- battery and low-battery entities are exposed
-- polling uses local `getDeviceInfo`, `getLockStatus`, and `getDeviceRunningInfo`
-- the live DLKLAP sequence is persisted in Home Assistant private storage
-- the one-time import file is deleted after successful import
-
-If the saved session is missing, invalid, or rejected, setup reports that specific condition instead of marking DL100 unsupported.
-
-**Current limitation:** TP-Link Local does not yet create a brand-new DL100 authorization session from scratch. A current authorized local session must already exist for the initial import. Runtime after import remains local-only.
+Additional compatible python-kasa features flow into generic sensor, binary sensor, switch, number, select, and button entities.
 
 ## Installation
 
 ### HACS custom repository
 
-1. Add `https://github.com/gigabytegrove/tapo-local` to HACS as a custom **Integration** repository.
-2. Install **TP-Link Local**.
+1. Add https://github.com/gigabytegrove/tapo-local to HACS as a custom **Integration** repository.
+2. Install **TAPO Local**.
 3. Restart Home Assistant.
-4. Go to **Settings → Devices & services → Add integration**.
-5. Search for **TP-Link Local**.
+4. Go to **Settings -> Devices & services -> Add integration**.
+5. Search for **TAPO Local**.
 6. Enter the device IP address or hostname.
+7. If the device uses an authenticated SMART protocol, TAPO Local will ask for credentials during initial local verification.
 
-No separate python-kasa installation is required. The integration manifest pins:
+No separate python-kasa installation is required.
 
-```text
+The manifest pins:
+
+~~~text
 python-kasa[speedups]==0.10.2
 cryptography>=1.9
-```
+~~~
 
-Home Assistant is responsible for installing declared integration requirements. TP-Link Local 0.4.0 also performs its own runtime preflight before any TP-Link device I/O:
-
-1. Check the active Home Assistant Python environment for the required python-kasa version.
-2. Ask Home Assistant's requirements manager to install/repair the pinned dependency if it is missing or mismatched.
-3. Verify that python-kasa is importable and is the expected version.
-4. Only then initialize the device backend.
-5. If dependency preparation fails, do not contact or change the TP-Link device; show a clear configuration error and create a **Settings → System → Repairs** issue describing what Home Assistant could not prepare.
-
-Manual `pip install` commands inside Home Assistant are not part of the supported installation process.
-
-## VLANs
-
-Supported switches are addressed directly. Broadcast discovery is not required.
-
-Home Assistant needs routed access to TCP port `9999` on KS200/KS200M devices and TCP port `80` on DL100.
+Home Assistant's requirements manager installs and validates those dependencies.
 
 ## Local-only policy
 
-For supported devices:
+TAPO Local is designed around LAN device control.
 
-- No TP-Link account credentials
-- No TP-Link cloud API
-- No Internet requirement
-- No cloud fallback
-- No generic `try_all_connect`
-- No protocol guessing
-- Direct device IP control
+- Direct device IP/hostname access
+- No cloud control fallback
+- No generic protocol guessing at runtime
+- No helper daemon or sidecar
+- No manually managed pip install
+- Plaintext TP-Link credentials are not retained
+- Credential hashes and DL100 session material are stored privately
+- Sensitive session/authentication material is redacted from diagnostics
+
+For authenticated SMART devices, the TP-Link account credentials are used to authenticate **to the local device during setup**. The integration does not use them to perform a TP-Link cloud login.
+
+## Networking
+
+TAPO Local can work across routed VLANs because devices are addressed directly.
+
+| Device family | Typical local transport |
+|---|---|
+| Legacy Kasa IOT | TCP 9999 XOR |
+| Modern Kasa/Tapo SMART | HTTP/HTTPS using device-advertised AES/KLAP parameters |
+| Tapo DL100 | HTTP 80 DLKLAP |
+
+Firewalls must permit Home Assistant to reach the device on its required local port.
+
+## Security and privacy
+
+TAPO Local treats device authentication material as sensitive.
+
+- DL100 seeds, LMK, cookies, and sequence state live in Home Assistant private storage after import.
+- Modern Kasa/Tapo plaintext credentials are used only for initial local verification.
+- The reusable protocol credential hash is moved into Home Assistant private storage.
+- Diagnostics redact credential hashes, cookies, keys, seeds, device IDs, MAC addresses, aliases, and location fields.
+
+## Scope and limitations
+
+TAPO Local currently focuses on device classes that map cleanly to Home Assistant local-control entities.
+
+Not yet implemented as first-class platforms:
+
+- Tapo/Kasa cameras
+- Tapo doorbells
+- robot vacuums
+- thermostat/climate devices
+- live button-press event streams for S200B/S200D
+
+Those device families may be supported by python-kasa, but TAPO Local does not advertise them until their Home Assistant platform behavior is implemented properly.
 
 ## Dependency relationship
 
-TP-Link Local depends on python-kasa but is not the Home Assistant built-in TP-Link integration.
+TAPO Local depends on [python-kasa](https://github.com/python-kasa/python-kasa) for supported Kasa/Tapo protocol implementations and capability definitions. It is a separate Home Assistant custom integration with its own config flow, storage policy, entity mapping, and deterministic connection rules.
 
-The key difference is **connection policy**: Tapo-Local explicitly selects the transport verified for the device while using python-kasa for protocol implementation, modules, and feature definitions.
-
-python-kasa is licensed GPL-3.0-or-later and remains a separately installed dependency. See `THIRD_PARTY.md`.
+python-kasa is installed as a separate dependency and is not vendored into this repository. See [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## License
 
-TP-Link Local source is currently Apache License 2.0. See `THIRD_PARTY.md` for dependency licensing.
+TAPO Local source is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
