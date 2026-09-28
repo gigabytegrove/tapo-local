@@ -44,6 +44,15 @@ def _read_session_import(path: str) -> dict[str, Any]:
     return extract_session_state(payload)
 
 
+def _write_session_import(path: str, state: dict[str, Any]) -> None:
+    """Persist the advanced DLKLAP sequence during setup verification."""
+    target = Path(path)
+    tmp = target.with_name(f"{target.name}.tmp")
+    tmp.write_text(json.dumps({"session": state}, indent=2))
+    tmp.chmod(0o600)
+    tmp.replace(target)
+
+
 def _remove_session_import(path: str) -> None:
     Path(path).unlink(missing_ok=True)
 
@@ -149,9 +158,17 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             from .dl100_backend import DL100LocalDevice, DL100LocalError
 
+            async def _save_import_session(state: dict[str, Any]) -> None:
+                await self.hass.async_add_executor_job(
+                    _write_session_import,
+                    import_path,
+                    state,
+                )
+
             device = DL100LocalDevice(
                 self._pending_dl100["host"],
                 session_state=session_state,
+                session_saver=_save_import_session,
             )
             try:
                 state = await device.get_state()
