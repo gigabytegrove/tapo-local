@@ -34,11 +34,35 @@ async def async_setup_entry(
             continue
         entities.append(TPLinkFeatureSelect(coordinator, feature_id))
 
+    for child in coordinator.device.children:
+        for feature_id, feature in child.features.items():
+            if feature.type == Feature.Type.Choice:
+                entities.append(
+                    TPLinkFeatureSelect(coordinator, feature_id, target=child)
+                )
+
     async_add_entities(entities)
 
 
 class TPLinkFeatureSelect(TPLinkKasaFeatureEntity, SelectEntity):
     """A python-kasa Choice feature."""
+
+    def __init__(
+        self,
+        coordinator: TPLinkLocalCoordinator,
+        feature_id: str,
+        *,
+        key: str | None = None,
+        name: str | None | object = ...,
+        target=None,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            feature_id,
+            key=key,
+            name=name,
+            target=target,
+        )
 
     @property
     def options(self) -> list[str]:
