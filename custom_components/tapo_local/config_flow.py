@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -32,17 +33,35 @@ from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 from .discovery import async_targeted_tdp_discovery
 
 
+_LOGGER = logging.getLogger(__name__)
+
 USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
 DL100_RETRY_SCHEMA = vol.Schema({})
 
 
 def _read_session_import(path: str) -> dict[str, Any]:
-    from .dl100_backend import extract_session_state
-
+    """Read the one-time DL100 import without importing protocol modules."""
     payload = json.loads(Path(path).read_text())
     if not isinstance(payload, dict):
         raise ValueError("DL100 session import must be a JSON object")
-    return extract_session_state(payload)
+
+    session = payload.get("session")
+    if not isinstance(session, dict):
+        # Also accept a raw session-only object for manually prepared imports.
+        required = {"local_seed", "remote_seed", "lmk", "seq", "cookie"}
+        if required.issubset(payload):
+            session = payload
+        else:
+            raise ValueError("DL100 session import contains no session object")
+
+    return {
+        "session": session,
+        "host": str(payload.get("host") or "").strip() or None,
+        "device_id": str(
+            payload.get("device_id") or payload.get("deviceId") or ""
+        ).strip() or None,
+        "terminal_uuid": str(payload.get("terminal_uuid") or "").strip() or None,
+    }
 
 
 def _write_session_import(path: str, state: dict[str, Any]) -> None:
@@ -91,6 +110,40 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 try:
                     info = await backend.async_probe()
                 except TPLinkLocalBackendError:
+                    # A verified DL100 cache created by the repository tooling
+                    # contains its original host and stable device_id. Prefer
+                    # that explicit local identity over intermittent/sleep-
+                    # sensitive TDP discovery, then cryptographically verify the
+                    # session in async_step_dl100_session.
+                    import_path = self.hass.config.path(DL100_SESSION_IMPORT)
+                    import_bundle: dict[str, Any] | None = None
+                    try:
+                        import_bundle = await self.hass.async_add_executor_job(
+                            _read_session_import, import_path
+                        )
+                    except (FileNotFoundError, ValueError, json.JSONDecodeError):
+                        pass
+
+                    if (
+                        import_bundle
+                        and import_bundle.get("device_id")
+                        and (
+                            import_bundle.get("host") is None
+                            or import_bundle.get("host") == host
+                        )
+                    ):
+                        _LOGGER.info(
+                            "DL100 saved-session metadata matches the supplied "
+                            "host; verifying the encrypted LAN session directly"
+                        )
+                        self._pending_dl100 = {
+                            "host": host,
+                            "model": "DL100",
+                            "device_type": "SMART.TAPOLOCK",
+                            "device_id": import_bundle["device_id"],
+                        }
+                        return await self.async_step_dl100_session()
+
                     discovery = await async_targeted_tdp_discovery(host)
                     if discovery:
                         model = str(discovery.get("device_model") or "")
@@ -153,9 +206,10 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         try:
-            session_state = await self.hass.async_add_executor_job(
+            import_bundle = await self.hass.async_add_executor_job(
                 _read_session_import, import_path
             )
+            session_state = import_bundle["session"]
         except FileNotFoundError:
             errors["base"] = "dl100_session_missing"
         except Exception:
