@@ -1,12 +1,14 @@
-"""Sensors for TP-Link Local."""
+"""Sensor entities for TP-Link Local."""
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
+from datetime import date, datetime, timedelta
+from enum import Enum
+from typing import Any
+
+from kasa import Feature
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import (
     EntityCategory,
     PERCENTAGE,
@@ -18,6 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import TPLinkLocalCoordinator
 from .entity import TPLinkLocalEntity
+from .kasa_feature_entity import MANUAL_FEATURE_IDS, TPLinkKasaFeatureEntity
 
 
 async def async_setup_entry(
@@ -25,43 +28,49 @@ async def async_setup_entry(
     entry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensors."""
+    """Set up sensor features exposed by python-kasa."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
+    entities: list[SensorEntity] = []
 
-    entities: list[SensorEntity] = [
-        TPLinkRssiSensor(coordinator),
-        TPLinkOnTimeSensor(coordinator),
-    ]
+    if coordinator.device.get_feature("rssi"):
+        entities.append(TPLinkRssiSensor(coordinator))
 
-    if coordinator.has_pir:
-        entities.extend(
-            [
-                TPLinkPirAdcSensor(coordinator),
-                TPLinkPirPercentSensor(coordinator),
-            ]
-        )
+    if "on_time" in coordinator.sysinfo:
+        entities.append(TPLinkOnTimeSensor(coordinator))
+
+    if coordinator.device.get_feature("pir_adc_value"):
+        entities.append(TPLinkPirAdcSensor(coordinator))
+    if coordinator.device.get_feature("pir_percent"):
+        entities.append(TPLinkPirPercentSensor(coordinator))
+
+    for feature_id, feature in coordinator.device.features.items():
+        if feature_id in MANUAL_FEATURE_IDS or feature.type != Feature.Type.Sensor:
+            continue
+        value = coordinator.device.feature_value(feature_id)
+        if isinstance(value, bool):
+            continue
+        entities.append(TPLinkFeatureSensor(coordinator, feature_id))
 
     async_add_entities(entities)
 
 
-class TPLinkRssiSensor(TPLinkLocalEntity, SensorEntity):
-    """Wi-Fi RSSI."""
+class TPLinkRssiSensor(TPLinkKasaFeatureEntity, SensorEntity):
+    """Wi-Fi RSSI from python-kasa."""
 
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
     _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
-        super().__init__(coordinator, key="rssi", name="Wi-Fi signal")
+        super().__init__(coordinator, "rssi", key="rssi", name="Wi-Fi signal")
 
     @property
     def native_value(self):
-        return self.coordinator.sysinfo.get("rssi")
+        return self.feature_value
 
 
 class TPLinkOnTimeSensor(TPLinkLocalEntity, SensorEntity):
-    """Current relay on-time."""
+    """Current relay on-time from the raw device sysinfo."""
 
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -75,33 +84,67 @@ class TPLinkOnTimeSensor(TPLinkLocalEntity, SensorEntity):
         return self.coordinator.sysinfo.get("on_time")
 
 
-class TPLinkPirAdcSensor(TPLinkLocalEntity, SensorEntity):
+class TPLinkPirAdcSensor(TPLinkKasaFeatureEntity, SensorEntity):
     """Raw PIR ADC value."""
 
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
-        super().__init__(coordinator, key="pir_adc", name="PIR ADC")
+        super().__init__(coordinator, "pir_adc_value", key="pir_adc", name="PIR ADC")
 
     @property
     def native_value(self):
-        pir_state = self.coordinator.data.get("pir_state") if self.coordinator.data else None
-        return pir_state.adc_value if pir_state else None
+        return self.feature_value
 
 
-class TPLinkPirPercentSensor(TPLinkLocalEntity, SensorEntity):
+class TPLinkPirPercentSensor(TPLinkKasaFeatureEntity, SensorEntity):
     """Calculated PIR signal percentage."""
 
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
-        super().__init__(coordinator, key="pir_percent", name="PIR signal")
+        super().__init__(coordinator, "pir_percent", key="pir_percent", name="PIR signal")
 
     @property
     def native_value(self):
-        pir_state = self.coordinator.data.get("pir_state") if self.coordinator.data else None
-        return round(pir_state.percent, 2) if pir_state else None
+        value = self.feature_value
+        return round(float(value), 2) if value is not None else None
+
+
+class TPLinkFeatureSensor(TPLinkKasaFeatureEntity, SensorEntity):
+    """Any additional read-only scalar feature provided by python-kasa."""
+
+    def __init__(self, coordinator: TPLinkLocalCoordinator, feature_id: str) -> None:
+        super().__init__(coordinator, feature_id)
+        feature = self.feature
+        if feature is None:
+            return
+
+        unit = feature.unit
+        if isinstance(unit, Enum):
+            unit = unit.value
+        if unit is not None:
+            self._attr_native_unit_of_measurement = str(unit)
+
+        value = self.feature_value
+        if isinstance(value, datetime):
+            self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        elif isinstance(value, timedelta):
+            self._attr_device_class = SensorDeviceClass.DURATION
+            self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> Any:
+        value = self.feature_value
+        if isinstance(value, Enum):
+            return value.value if isinstance(value.value, (str, int, float, bool)) else value.name
+        if isinstance(value, timedelta):
+            return value.total_seconds()
+        if isinstance(value, (str, int, float, date, datetime)) or value is None:
+            return value
+        return str(value)
