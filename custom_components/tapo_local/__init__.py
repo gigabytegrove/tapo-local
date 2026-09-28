@@ -8,7 +8,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.storage import Store
 
+from .const import (
+    CONF_SESSION,
+    CONF_TRANSPORT,
+    DL100_SESSION_STORE_VERSION,
+    DOMAIN,
+    TRANSPORT_DLKLAP,
+)
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 
 _LOGGER = logging.getLogger(__name__)
@@ -16,6 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.LOCK,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -30,20 +39,63 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except TPLinkLocalDependencyError as exc:
         raise ConfigEntryNotReady(str(exc)) from exc
 
-    # Import the python-kasa-backed runtime only after dependency preflight.
     from .coordinator import TPLinkLocalCoordinator
-    from .kasa_backend import KasaLocalDevice
 
-    device = KasaLocalDevice(entry.data[CONF_HOST])
+    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
+        from .dl100_backend import DL100LocalDevice
+
+        store: Store[dict] = Store(
+            hass,
+            DL100_SESSION_STORE_VERSION,
+            f"{DOMAIN}.dl100_session.{entry.entry_id}",
+            private=True,
+            atomic_writes=True,
+        )
+        stored = await store.async_load()
+        session_state = None
+        if isinstance(stored, dict) and isinstance(stored.get("session"), dict):
+            session_state = stored["session"]
+        elif isinstance(entry.data.get(CONF_SESSION), dict):
+            session_state = entry.data[CONF_SESSION]
+
+        if session_state is None:
+            raise ConfigEntryNotReady(
+                "DL100 local session is missing; re-add the device with a session import"
+            )
+
+        async def _save_session(state: dict) -> None:
+            await store.async_save({"session": state})
+
+        try:
+            device = DL100LocalDevice(
+                entry.data[CONF_HOST],
+                session_state=session_state,
+                session_saver=_save_session,
+            )
+        except Exception as exc:
+            raise ConfigEntryNotReady(f"DL100 local session is invalid: {exc}") from exc
+    else:
+        from .kasa_backend import KasaLocalDevice
+
+        device = KasaLocalDevice(entry.data[CONF_HOST])
+
     coordinator = TPLinkLocalCoordinator(hass, entry, device)
-
     await coordinator.async_config_entry_first_refresh()
+
+    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
+        latest = device.export_session()
+        await _save_session(latest)
+        if CONF_SESSION in entry.data:
+            new_data = dict(entry.data)
+            new_data.pop(CONF_SESSION, None)
+            hass.config_entries.async_update_entry(entry, data=new_data)
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
-    entry.async_on_unload(device.async_disconnect)
+    if hasattr(device, "async_disconnect"):
+        entry.async_on_unload(device.async_disconnect)
     return True
 
 
