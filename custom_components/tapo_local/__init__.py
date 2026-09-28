@@ -54,7 +54,7 @@ async def async_migrate_entry(
         entry.minor_version,
     )
 
-    if entry.version > 3:
+    if entry.version > 4:
         _LOGGER.error(
             "Cannot migrate TAPO Local entry %s from future version %s",
             entry.title,
@@ -62,11 +62,12 @@ async def async_migrate_entry(
         )
         return False
 
-    # Versions 1 and 2 already stored the same host/model/device_type/transport
-    # fields used by the python-kasa XOR runtime. Version 3 adds DL100 setup but
-    # requires no destructive data transformation for existing switch entries.
-    if entry.version < 3:
-        hass.config_entries.async_update_entry(entry, version=3)
+    # Versions 1 and 2 already stored the host/model/device_type/transport
+    # fields used by the XOR runtime. Version 3 added DL100. Version 4 adds
+    # authenticated SMART transport metadata. Existing entries need no
+    # destructive data transformation.
+    if entry.version < 4:
+        hass.config_entries.async_update_entry(entry, version=4)
 
     _LOGGER.debug(
         "Migration of TAPO Local entry %s to version %s.%s successful",
