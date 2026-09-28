@@ -118,6 +118,16 @@ No separate python-kasa installation is required. The integration manifest pins:
 python-kasa[speedups]==0.10.2
 ```
 
+Home Assistant is responsible for installing declared integration requirements. TP-Link Local 0.3.1 also performs its own runtime preflight before any TP-Link device I/O:
+
+1. Check the active Home Assistant Python environment for the required python-kasa version.
+2. Ask Home Assistant's requirements manager to install/repair the pinned dependency if it is missing or mismatched.
+3. Verify that python-kasa is importable and is the expected version.
+4. Only then initialize the device backend.
+5. If dependency preparation fails, do not contact or change the TP-Link device; show a clear configuration error and create a **Settings → System → Repairs** issue describing what Home Assistant could not prepare.
+
+Manual `pip install` commands inside Home Assistant are not part of the supported installation process.
+
 ## VLANs
 
 Supported switches are addressed directly. Broadcast discovery is not required.
