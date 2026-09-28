@@ -21,8 +21,8 @@ from .const import (
     SUPPORTED_MODELS,
     TRANSPORT_XOR,
 )
+from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 from .discovery import async_targeted_tdp_discovery
-from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
 
 
 USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
@@ -41,43 +41,56 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            host = user_input[CONF_HOST].strip()
-            backend = KasaLocalDevice(host)
-
             try:
-                info = await backend.async_probe()
-            except TPLinkLocalBackendError:
-                # The supported switches did not answer forced XOR. Check
-                # targeted TDP only to identify known non-XOR devices such as
-                # DL100; this does not use python-kasa discovery/fallback.
-                discovery = await async_targeted_tdp_discovery(host)
-                if discovery:
-                    model = str(discovery.get("device_model") or "")
-                    dtype = str(discovery.get("device_type") or "")
-                    if model.split("(", 1)[0].strip() == "DL100" and dtype == "SMART.TAPOLOCK":
-                        return self.async_abort(reason="dl100_no_local_wifi")
-                    errors["base"] = "unsupported_device"
-                else:
-                    errors["base"] = "cannot_connect"
+                await async_ensure_kasa(self.hass)
+            except TPLinkLocalDependencyError:
+                errors["base"] = "dependency_unavailable"
             else:
-                model = str(info["model"])
-                model_base = model.split("(", 1)[0].strip()
-                if model_base not in SUPPORTED_MODELS:
-                    errors["base"] = "unsupported_device"
-                else:
-                    unique_id = str(info.get("device_id") or host)
-                    await self.async_set_unique_id(unique_id)
-                    self._abort_if_unique_id_configured(updates={CONF_HOST: host})
+                # Import only after the dependency is known-good.
+                from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
 
-                    return self.async_create_entry(
-                        title=str(info.get("alias") or model),
-                        data={
-                            CONF_HOST: host,
-                            "model": model,
-                            "device_type": str(info.get("device_type") or ""),
-                            CONF_TRANSPORT: TRANSPORT_XOR,
-                        },
-                    )
+                host = user_input[CONF_HOST].strip()
+                backend = KasaLocalDevice(host)
+
+                try:
+                    info = await backend.async_probe()
+                except TPLinkLocalBackendError:
+                    # The supported switches did not answer forced XOR. Check
+                    # targeted TDP only to identify known non-XOR devices such
+                    # as DL100; this does not use python-kasa discovery/fallback.
+                    discovery = await async_targeted_tdp_discovery(host)
+                    if discovery:
+                        model = str(discovery.get("device_model") or "")
+                        dtype = str(discovery.get("device_type") or "")
+                        if (
+                            model.split("(", 1)[0].strip() == "DL100"
+                            and dtype == "SMART.TAPOLOCK"
+                        ):
+                            return self.async_abort(reason="dl100_no_local_wifi")
+                        errors["base"] = "unsupported_device"
+                    else:
+                        errors["base"] = "cannot_connect"
+                else:
+                    model = str(info["model"])
+                    model_base = model.split("(", 1)[0].strip()
+                    if model_base not in SUPPORTED_MODELS:
+                        errors["base"] = "unsupported_device"
+                    else:
+                        unique_id = str(info.get("device_id") or host)
+                        await self.async_set_unique_id(unique_id)
+                        self._abort_if_unique_id_configured(
+                            updates={CONF_HOST: host}
+                        )
+
+                        return self.async_create_entry(
+                            title=str(info.get("alias") or model),
+                            data={
+                                CONF_HOST: host,
+                                "model": model,
+                                "device_type": str(info.get("device_type") or ""),
+                                CONF_TRANSPORT: TRANSPORT_XOR,
+                            },
+                        )
 
         return self.async_show_form(
             step_id="user",
