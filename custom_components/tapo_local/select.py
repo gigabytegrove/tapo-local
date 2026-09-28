@@ -21,6 +21,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up choice features exposed by python-kasa."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
+    if coordinator.is_lock:
+        async_add_entities([])
+        return
     entities: list[SelectEntity] = []
 
     if coordinator.device.get_feature("pir_range"):
