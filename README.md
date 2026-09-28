@@ -2,7 +2,7 @@
 
 A Home Assistant custom integration for **local-first TP-Link/Kasa/Tapo control** with deterministic protocol selection.
 
-TP-Link Local uses **python-kasa as an internal protocol engine**, while keeping its own Home Assistant config flow, device/entity behavior, and connection policy.
+TP-Link Local uses **python-kasa as its device capability engine** while keeping its own Home Assistant config flow, device policy, entity model, and connection rules.
 
 ## Why this exists
 
@@ -21,6 +21,28 @@ host:          manually supplied IP/hostname
 
 That forces the proven local path.
 
+## python-kasa integration
+
+TP-Link Local now consumes python-kasa's public `Device.features` interface directly instead of hand-implementing a small subset of module APIs.
+
+At setup time python-kasa initializes the device and its supported modules/features. TP-Link Local then maps those features into Home Assistant entities:
+
+| python-kasa feature type | Home Assistant entity |
+|---|---|
+| `Switch` | switch |
+| `BinarySensor` | binary sensor |
+| read-only boolean `Sensor` | binary sensor |
+| `Sensor` | sensor |
+| `Choice` | select |
+| `Number` | number |
+| `Action` | button |
+
+This means new features added by python-kasa can flow into Tapo-Local without requiring a new hand-written entity for every setting.
+
+Existing TP-Link Local entity identities for relay, LED, motion, PIR enable/range, RSSI, on-time, PIR ADC and PIR percentage are preserved so upgrades do not intentionally replace the existing entities.
+
+python-kasa remains a normal Home Assistant Python dependency. There is no helper daemon, sidecar container, subprocess, or separately managed python-kasa installation.
+
 ## Runtime architecture
 
 ```text
@@ -29,22 +51,20 @@ Home Assistant
       v
 TP-Link Local
       |
-      +-- owns config flow
-      +-- owns entities
-      +-- owns protocol-selection policy
+      +-- owns config flow / entities
+      +-- owns deterministic connection policy
+      +-- maps python-kasa Device.features to HA
       |
       v
 python-kasa 0.10.2
       |
-      +-- forced DeviceConfig
-      +-- no UDP discovery
-      +-- no try-all transport selection
+      +-- device protocol implementation
+      +-- modules
+      +-- generic feature API
       |
       v
 KS200 / KS200M TCP/9999 XOR
 ```
-
-There is no helper daemon, sidecar container, subprocess, or separately managed python-kasa installation. Home Assistant installs the pinned package from the integration manifest.
 
 ## Current hardware status
 
@@ -52,39 +72,34 @@ There is no helper daemon, sidecar container, subprocess, or separately managed 
 |---|---|---|---|
 | KS200 (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
 | KS200M (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
-| Tapo DL100 | Transport under active development | Required | **Release-blocking support target** |
+| Tapo DL100 | DLKLAP work remains upstream/in development | Required | **Release-blocking support target** |
 
 ## KS200
 
-- Relay on/off through python-kasa
-- Relay state
-- Status LED through python-kasa `Led` module
-- Wi-Fi RSSI
-- On-time
-- Direct local polling
+The KS200 is driven through python-kasa's feature API. Current exposed capabilities include relay state/control, LED configuration, Wi-Fi RSSI, on-time diagnostics, reboot action, and any additional compatible python-kasa features presented by the device.
 
 ## KS200M
 
-python-kasa already has first-class support for the device's local PIR modules. TP-Link Local consumes those modules instead of maintaining a parallel implementation.
+python-kasa has first-class support for the local `smartlife.iot.PIR` module. Tapo-Local now consumes its feature definitions directly, including:
 
-- Relay on/off
-- Motion binary sensor
+- relay on/off
+- motion state
 - PIR enable/disable
 - PIR range
-- PIR ADC diagnostic sensor
-- Calculated PIR percentage
-- Status LED
+- **PIR threshold**
+- PIR ADC diagnostics
+- calculated PIR percentage
+- status LED
 - RSSI / on-time
-
-The underlying python-kasa module is `Module.IotMotion` / `smartlife.iot.PIR`.
+- python-kasa actions and any future feature additions
 
 ## DL100
 
 Released python-kasa **0.10.2 does not include DL100/DLKLAP support**.
 
-An upstream DL100 pull request exists, but its DLKLAP transport explicitly requires TP-Link account authentication and a cloud-issued per-session control key. That implementation is being used as protocol research, not as the final TP-Link Local design.
+An upstream DL100/DLKLAP implementation is still under development. TP-Link Local keeps DL100 as a required release-blocking target; integrating python-kasa fully does not remove DL100 from project scope.
 
-**DL100 remains a required device for this project and is a release blocker.** TP-Link Local will not be considered complete until DL100 control is implemented. The unresolved engineering task is the transport/authentication path, not device scope.
+The repository also contains read-only DL100 research tooling and verified local-session findings. Those tools are research support, not a replacement for the python-kasa backend used for supported switches.
 
 ## Installation
 
@@ -102,8 +117,6 @@ No separate python-kasa installation is required. The integration manifest pins:
 ```text
 python-kasa[speedups]==0.10.2
 ```
-
-which is also the version currently used by Home Assistant's built-in TP-Link integration.
 
 ## VLANs
 
@@ -123,11 +136,11 @@ For supported devices:
 - No protocol guessing
 - Direct device IP control
 
-## python-kasa relationship
+## Dependency relationship
 
 TP-Link Local depends on python-kasa but is not the Home Assistant built-in TP-Link integration.
 
-The key difference is **connection policy**: TP-Link Local explicitly selects the transport that has been verified on the device instead of asking python-kasa to discover/guess the connection type.
+The key difference is **connection policy**: Tapo-Local explicitly selects the transport verified for the device while using python-kasa for protocol implementation, modules, and feature definitions.
 
 python-kasa is licensed GPL-3.0-or-later and remains a separately installed dependency. See `THIRD_PARTY.md`.
 
