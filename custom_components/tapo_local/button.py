@@ -19,6 +19,9 @@ async def async_setup_entry(
 ) -> None:
     """Expose every python-kasa Action feature."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
+    if coordinator.is_lock:
+        async_add_entities([])
+        return
     entities = [
         TPLinkFeatureButton(coordinator, feature_id)
         for feature_id, feature in coordinator.device.features.items()
