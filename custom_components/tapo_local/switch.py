@@ -24,7 +24,7 @@ async def async_setup_entry(
         return
     entities: list[SwitchEntity] = []
 
-    if coordinator.device.get_feature("state"):
+    if coordinator.device.get_feature("state") and not coordinator.device.is_light:
         entities.append(TPLinkRelaySwitch(coordinator))
     if coordinator.device.get_feature("led"):
         entities.append(TPLinkLedSwitch(coordinator))
@@ -35,6 +35,27 @@ async def async_setup_entry(
         if feature_id in MANUAL_FEATURE_IDS or feature.type != Feature.Type.Switch:
             continue
         entities.append(TPLinkFeatureSwitch(coordinator, feature_id))
+
+    for child in coordinator.device.children:
+        for feature_id, feature in child.features.items():
+            if feature_id == "state":
+                entities.append(
+                    TPLinkFeatureSwitch(
+                        coordinator,
+                        feature_id,
+                        key="state",
+                        name=None,
+                        target=child,
+                    )
+                )
+            elif feature.type == Feature.Type.Switch:
+                entities.append(
+                    TPLinkFeatureSwitch(
+                        coordinator,
+                        feature_id,
+                        target=child,
+                    )
+                )
 
     async_add_entities(entities)
 
@@ -74,7 +95,21 @@ class TPLinkPirEnabledSwitch(_BaseFeatureSwitch):
 
 
 class TPLinkFeatureSwitch(_BaseFeatureSwitch):
-    """Any additional writable boolean feature provided by python-kasa."""
+    """Any writable boolean feature provided by python-kasa."""
 
-    def __init__(self, coordinator: TPLinkLocalCoordinator, feature_id: str) -> None:
-        super().__init__(coordinator, feature_id)
+    def __init__(
+        self,
+        coordinator: TPLinkLocalCoordinator,
+        feature_id: str,
+        *,
+        key: str | None = None,
+        name: str | None | object = ...,
+        target=None,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            feature_id,
+            key=key,
+            name=name,
+            target=target,
+        )
