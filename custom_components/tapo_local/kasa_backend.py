@@ -1,6 +1,6 @@
-"""python-kasa backend for TP-Link Local.
+"""python-kasa backend for TAPO Local.
 
-TP-Link Local owns Home Assistant setup and entity behavior. python-kasa owns
+TAPO Local owns Home Assistant setup and entity behavior. python-kasa owns
 wire-protocol, modules, and feature behavior. Connections are constructed from
 explicit DeviceConfig values so runtime never falls back to protocol guessing.
 """
