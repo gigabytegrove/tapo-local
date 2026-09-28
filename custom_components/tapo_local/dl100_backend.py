@@ -283,7 +283,9 @@ class DL100LocalDevice:
     async def get_state(self) -> dict[str, Any]:
         """Read identity, lock state, and running/battery metadata locally."""
         sysinfo: dict[str, Any] = {}
-        for method in ("getDeviceInfo", "getLockStatus", "getDeviceRunningInfo"):
+        # These two methods were verified against the target DL100 using the
+        # restored local session. Keep setup/runtime polling on the proven set.
+        for method in ("getLockStatus", "getDeviceRunningInfo"):
             result = await self.request(method)
             self._merge_result(sysinfo, result)
 
