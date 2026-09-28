@@ -1,0 +1,41 @@
+# Changelog
+
+## 0.5.0
+
+### Added
+
+- Expanded legacy Kasa IOT/XOR support beyond KS200/KS200M to compatible plugs, wall switches, dimmers, power strips, bulbs, and light strips supported by python-kasa 0.10.2.
+- Added authenticated local SMART support for supported Kasa/Tapo plug, switch, bulb, and hub families using exact targeted-TDP transport metadata.
+- Added one-time local credential verification for SMART devices.
+- Added private Home Assistant storage for reusable python-kasa credential hashes; plaintext passwords are not retained.
+- Added native Home Assistant light entities for compatible bulbs, light strips, and dimmers.
+- Added native Home Assistant fan entities for fan-capable devices such as KS240.
+- Added child-device/entity support for multi-outlet power strips.
+- Added H100/KH100/H200 hub support with child sensor entity mapping.
+- Added motion, contact, water-leak, battery, temperature, and humidity device-class mappings for common hub children.
+- Added SUPPORTED_DEVICES.md.
+
+### Changed
+
+- Product branding is now consistently **TAPO Local** in Home Assistant, HACS metadata, and repository documentation.
+- Existing integration domain remains tapo_local for upgrade compatibility.
+- Device support is capability/transport driven rather than a KS200/KS200M model whitelist.
+- Diagnostics now redact credential hashes and DL100 session/authentication material.
+
+### Preserved
+
+- KS200 and KS200M existing behavior and entity identities.
+- DL100 local DLKLAP runtime, persistent private session storage, and physically verified lock/unlock support.
+- Deterministic local transport policy with no cloud-control fallback.
+
+### Not yet advertised
+
+- Cameras and doorbells
+- Robot vacuums
+- Thermostat/climate devices
+- S200B/S200D live button-press event streams
+
+## 0.4.6
+
+- Added verified DL100 physical lock/unlock write handling with post-command state verification.
+- Preserved and advanced the persistent private DLKLAP session sequence.
