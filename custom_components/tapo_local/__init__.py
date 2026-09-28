@@ -12,11 +12,18 @@ from homeassistant.helpers.importlib import async_import_module
 from homeassistant.helpers.storage import Store
 
 from .const import (
+    CONF_CREDENTIALS_HASH,
+    CONF_DEVICE_FAMILY,
+    CONF_ENCRYPTION_TYPE,
+    CONF_HTTPS,
+    CONF_HTTP_PORT,
+    CONF_LOGIN_VERSION,
     CONF_SESSION,
     CONF_TRANSPORT,
     DL100_SESSION_STORE_VERSION,
     DOMAIN,
     TRANSPORT_DLKLAP,
+    TRANSPORT_SMART,
 )
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 
@@ -25,6 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.LIGHT,
     Platform.LOCK,
     Platform.NUMBER,
     Platform.SELECT,
@@ -127,7 +135,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass, f"{__package__}.kasa_backend"
         )
         KasaLocalDevice = kasa_module.KasaLocalDevice
-        device = KasaLocalDevice(entry.data[CONF_HOST])
+
+        if entry.data.get(CONF_TRANSPORT) == TRANSPORT_SMART:
+            device = KasaLocalDevice(
+                entry.data[CONF_HOST],
+                device_family=entry.data[CONF_DEVICE_FAMILY],
+                encryption_type=entry.data[CONF_ENCRYPTION_TYPE],
+                login_version=entry.data.get(CONF_LOGIN_VERSION),
+                https=bool(entry.data.get(CONF_HTTPS, False)),
+                http_port=entry.data.get(CONF_HTTP_PORT),
+                credentials_hash=entry.data[CONF_CREDENTIALS_HASH],
+            )
+        else:
+            device = KasaLocalDevice(entry.data[CONF_HOST])
 
     coordinator = TPLinkLocalCoordinator(hass, entry, device)
     await coordinator.async_config_entry_first_refresh()
