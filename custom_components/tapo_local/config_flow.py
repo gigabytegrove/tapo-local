@@ -12,6 +12,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.importlib import async_import_module
 
 from .const import (
     CONF_POLL_INTERVAL,
@@ -78,7 +79,11 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except TPLinkLocalDependencyError:
                 errors["base"] = "dependency_unavailable"
             else:
-                from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
+                kasa_module = await async_import_module(
+                    self.hass, f"{__package__}.kasa_backend"
+                )
+                KasaLocalDevice = kasa_module.KasaLocalDevice
+                TPLinkLocalBackendError = kasa_module.TPLinkLocalBackendError
 
                 host = user_input[CONF_HOST].strip()
                 backend = KasaLocalDevice(host)
@@ -156,7 +161,11 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception:
             errors["base"] = "dl100_session_invalid"
         else:
-            from .dl100_backend import DL100LocalDevice, DL100LocalError
+            dl100_module = await async_import_module(
+                self.hass, f"{__package__}.dl100_backend"
+            )
+            DL100LocalDevice = dl100_module.DL100LocalDevice
+            DL100LocalError = dl100_module.DL100LocalError
 
             async def _save_import_session(state: dict[str, Any]) -> None:
                 await self.hass.async_add_executor_job(
