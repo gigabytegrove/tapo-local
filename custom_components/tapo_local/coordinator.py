@@ -29,7 +29,7 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device = device
         self.sysinfo: dict[str, Any] = {}
         self.model = str(entry.data.get("model", "Unknown"))
-        self.has_pir = self.model.split("(", 1)[0].strip().endswith("M")
+        self.has_pir = False
 
         poll_interval = int(
             entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
@@ -45,7 +45,7 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            data = await self.device.get_state(include_pir=self.has_pir)
+            data = await self.device.get_state()
         except TPLinkLocalBackendError as exc:
             raise UpdateFailed(str(exc)) from exc
 
