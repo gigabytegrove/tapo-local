@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3
+
+- Corrected the product name capitalization throughout the repository and Home Assistant metadata from `TAPO Local` to `Tapo Local`.
+
+
 ## 0.5.0
 
 ### Added
@@ -17,7 +22,7 @@
 
 ### Changed
 
-- Product branding is now consistently **TAPO Local** in Home Assistant, HACS metadata, and repository documentation.
+- Product branding is now consistently **Tapo Local** in Home Assistant, HACS metadata, and repository documentation.
 - Existing integration domain remains tapo_local for upgrade compatibility.
 - Device support is capability/transport driven rather than a KS200/KS200M model whitelist.
 - Diagnostics now redact credential hashes and DL100 session/authentication material.

@@ -1,16 +1,16 @@
 # Supported devices
 
-TAPO Local is **capability-driven**. It does not maintain a brittle model whitelist for normal python-kasa devices.
+Tapo Local is **capability-driven**. It does not maintain a brittle model whitelist for normal python-kasa devices.
 
-A device is accepted when its locally detected protocol family and python-kasa device type map to a Home Assistant platform TAPO Local implements.
+A device is accepted when its locally detected protocol family and python-kasa device type map to a Home Assistant platform Tapo Local implements.
 
 This document separates:
 
-- **TAPO Local hardware verified** — physically tested directly with this project.
-- **python-kasa 0.10.2 upstream tested** — models represented by python-kasa 0.10.2 fixtures/support and handled by TAPO Local's implemented local transport/platform path.
-- **Not yet advertised** — python-kasa may support the device, but TAPO Local does not yet provide the correct Home Assistant platform.
+- **Tapo Local hardware verified** — physically tested directly with this project.
+- **python-kasa 0.10.2 upstream tested** — models represented by python-kasa 0.10.2 fixtures/support and handled by Tapo Local's implemented local transport/platform path.
+- **Not yet advertised** — python-kasa may support the device, but Tapo Local does not yet provide the correct Home Assistant platform.
 
-## TAPO Local hardware verified
+## Tapo Local hardware verified
 
 | Model | Class | Transport | Status |
 |---|---|---|---|
@@ -20,7 +20,7 @@ This document separates:
 
 ## Legacy Kasa IOT / XOR
 
-TAPO Local explicitly connects the legacy IOT/XOR transport and lets python-kasa specialize the device from local sysinfo.
+Tapo Local explicitly connects the legacy IOT/XOR transport and lets python-kasa specialize the device from local sysinfo.
 
 Supported Home Assistant classes include plug, wall switch, dimmer, power strip/outlet children, bulb, and light strip.
 
@@ -80,7 +80,7 @@ Bulbs, light strips, and dimmers are exposed as native Home Assistant light enti
 
 ## Modern Kasa/Tapo SMART devices
 
-TAPO Local performs targeted local TDP discovery, preserves the device-advertised family/encryption settings, and connects through python-kasa using the exact AES/KLAP parameters.
+Tapo Local performs targeted local TDP discovery, preserves the device-advertised family/encryption settings, and connects through python-kasa using the exact AES/KLAP parameters.
 
 Initial local authentication may require the TP-Link account credentials authorized for the device. Plaintext credentials are not retained after setup.
 
@@ -152,7 +152,7 @@ Supported capabilities are mapped to native light controls for on/off, brightnes
 
 ## Hubs and hub-connected sensors
 
-TAPO Local supports python-kasa SMART hub devices as local parent devices and maps supported children as Home Assistant child devices.
+Tapo Local supports python-kasa SMART hub devices as local parent devices and maps supported children as Home Assistant child devices.
 
 Known upstream-tested hubs:
 
@@ -160,7 +160,7 @@ Known upstream-tested hubs:
 - KH100
 - H200
 
-Known upstream-tested sensor children TAPO Local can map:
+Known upstream-tested sensor children Tapo Local can map:
 
 - T100 motion sensor
 - T110 contact sensor
@@ -183,13 +183,13 @@ Typical child mappings include:
 
 ### Hub limitations
 
-- S200B/S200D live button-press event streams are not advertised yet because python-kasa 0.10.2 does not provide the event behavior TAPO Local needs.
-- KE100 thermostat/climate control is not advertised until TAPO Local implements a proper Home Assistant climate platform.
+- S200B/S200D live button-press event streams are not advertised yet because python-kasa 0.10.2 does not provide the event behavior Tapo Local needs.
+- KE100 thermostat/climate control is not advertised until Tapo Local implements a proper Home Assistant climate platform.
 - H200 camera/video functions are not advertised; the hub/sensor path does not imply camera streaming support.
 
 ## Tapo DL100
 
-The DL100 uses TAPO Local's native DLKLAP backend rather than python-kasa 0.10.2.
+The DL100 uses Tapo Local's native DLKLAP backend rather than python-kasa 0.10.2.
 
 Current verified behavior:
 
@@ -207,7 +207,7 @@ Initial setup currently requires an already-authorized local DLKLAP session impo
 
 ## Not yet advertised
 
-TAPO Local intentionally does not claim first-class support for these categories yet, even where python-kasa can communicate with some models:
+Tapo Local intentionally does not claim first-class support for these categories yet, even where python-kasa can communicate with some models:
 
 - cameras
 - doorbells
@@ -215,7 +215,7 @@ TAPO Local intentionally does not claim first-class support for these categories
 - thermostats / climate devices
 - button-event remotes requiring live event delivery
 
-Those need dedicated Home Assistant platform behavior before they are considered supported by TAPO Local.
+Those need dedicated Home Assistant platform behavior before they are considered supported by Tapo Local.
 
 ## Firmware and hardware revisions
 
@@ -223,6 +223,6 @@ TP-Link has shipped the same retail model name with different protocol generatio
 
 For example, one hardware revision can use legacy XOR while a later revision uses SMART AES/KLAP.
 
-TAPO Local therefore selects support by **locally detected transport family and capability**, not model name alone.
+Tapo Local therefore selects support by **locally detected transport family and capability**, not model name alone.
 
-A model appearing in this document means TAPO Local has a compatible implementation path for the upstream-tested class/revision. It does not mean every firmware ever shipped under that retail model has been physically tested by the TAPO Local project.
+A model appearing in this document means Tapo Local has a compatible implementation path for the upstream-tested class/revision. It does not mean every firmware ever shipped under that retail model has been physically tested by the Tapo Local project.

@@ -1,6 +1,6 @@
-# TAPO Local branding
+# Tapo Local branding
 
-The canonical TAPO Local artwork is maintained with the integration.
+The canonical Tapo Local artwork is maintained with the integration.
 
 For Home Assistant 2026.3 and newer, custom integration brand assets belong in this directory:
 
@@ -11,8 +11,8 @@ For Home Assistant 2026.3 and newer, custom integration brand assets belong in t
 - icon@2x.png (optional)
 - logo@2x.png (optional)
 
-TAPO Local uses the project-supplied square PNG as the canonical visual identity.
+Tapo Local uses the project-supplied square PNG as the canonical visual identity.
 
 Do not redraw, substitute, recolor, or approximate the project logo when updating these assets.
 
-The integration domain remains tapo_local even though the user-facing product name is TAPO Local.
+The integration domain remains tapo_local even though the user-facing product name is Tapo Local.
