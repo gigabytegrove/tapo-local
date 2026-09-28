@@ -72,7 +72,7 @@ KS200 / KS200M TCP/9999 XOR
 |---|---|---|---|
 | KS200 (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
 | KS200M (US) hardware 1.0 | python-kasa 0.10.2 | IOT/XOR TCP 9999 | Supported |
-| Tapo DL100 | DLKLAP work remains upstream/in development | Required | **Release-blocking support target** |
+| Tapo DL100 | Native local saved-session DLKLAP runtime | HTTP/80 DLKLAP | Supported with an existing authorized LAN session |
 
 ## KS200
 
@@ -95,11 +95,30 @@ python-kasa has first-class support for the local `smartlife.iot.PIR` module. Ta
 
 ## DL100
 
-Released python-kasa **0.10.2 does not include DL100/DLKLAP support**.
+Released python-kasa **0.10.2 does not include DL100/DLKLAP support**, so DL100 uses a separate native local-only backend inside TP-Link Local.
 
-An upstream DL100/DLKLAP implementation is still under development. TP-Link Local keeps DL100 as a required release-blocking target; integrating python-kasa fully does not remove DL100 from project scope.
+TP-Link Local 0.4.0 can restore and use an **existing authorized DLKLAP LAN session**. This path has no TP-Link account login, cloud API fallback, handshake0 provisioning, or account credentials in runtime.
 
-The repository also contains read-only DL100 research tooling and verified local-session findings. Those tools are research support, not a replacement for the python-kasa backend used for supported switches.
+When a DL100 is identified during setup, TP-Link Local looks for a one-time session import at:
+
+```text
+/config/.storage/tapo_local_dl100_session_import.json
+```
+
+The import accepts the same saved-session cache format used by the repository's verified `dl100_saved_session_probe.py` tool. The session object contains the encrypted LAN session seeds/key material, current sequence, and `TP_SESSIONID` cookie.
+
+Setup verifies that session directly against the lock. If verification succeeds:
+
+- a Home Assistant `lock` entity is created
+- lock/unlock uses local `setLockStatus`
+- battery and low-battery entities are exposed
+- polling uses local `getDeviceInfo`, `getLockStatus`, and `getDeviceRunningInfo`
+- the live DLKLAP sequence is persisted in Home Assistant private storage
+- the one-time import file is deleted after successful import
+
+If the saved session is missing, invalid, or rejected, setup reports that specific condition instead of marking DL100 unsupported.
+
+**Current limitation:** TP-Link Local does not yet create a brand-new DL100 authorization session from scratch. A current authorized local session must already exist for the initial import. Runtime after import remains local-only.
 
 ## Installation
 
@@ -116,9 +135,10 @@ No separate python-kasa installation is required. The integration manifest pins:
 
 ```text
 python-kasa[speedups]==0.10.2
+cryptography>=1.9
 ```
 
-Home Assistant is responsible for installing declared integration requirements. TP-Link Local 0.3.1 also performs its own runtime preflight before any TP-Link device I/O:
+Home Assistant is responsible for installing declared integration requirements. TP-Link Local 0.4.0 also performs its own runtime preflight before any TP-Link device I/O:
 
 1. Check the active Home Assistant Python environment for the required python-kasa version.
 2. Ask Home Assistant's requirements manager to install/repair the pinned dependency if it is missing or mismatched.
@@ -132,7 +152,7 @@ Manual `pip install` commands inside Home Assistant are not part of the supporte
 
 Supported switches are addressed directly. Broadcast discovery is not required.
 
-Home Assistant needs routed access to TCP port `9999` on KS200/KS200M devices.
+Home Assistant needs routed access to TCP port `9999` on KS200/KS200M devices and TCP port `80` on DL100.
 
 ## Local-only policy
 
