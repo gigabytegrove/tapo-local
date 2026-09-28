@@ -85,7 +85,7 @@ class TPLinkDL100RssiSensor(TPLinkLocalEntity, SensorEntity):
     """DL100 Wi-Fi RSSI when supplied by the lock."""
 
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
-    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELSMILLIWATT
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
