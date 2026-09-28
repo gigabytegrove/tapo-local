@@ -1,4 +1,4 @@
-"""TAPO Local Home Assistant integration."""
+"""Tapo Local Home Assistant integration."""
 
 from __future__ import annotations
 
@@ -47,9 +47,9 @@ async def async_migrate_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> bool:
-    """Migrate older TAPO Local config entries to the current schema."""
+    """Migrate older Tapo Local config entries to the current schema."""
     _LOGGER.debug(
-        "Migrating TAPO Local entry %s from version %s.%s",
+        "Migrating Tapo Local entry %s from version %s.%s",
         entry.title,
         entry.version,
         entry.minor_version,
@@ -57,7 +57,7 @@ async def async_migrate_entry(
 
     if entry.version > 4:
         _LOGGER.error(
-            "Cannot migrate TAPO Local entry %s from future version %s",
+            "Cannot migrate Tapo Local entry %s from future version %s",
             entry.title,
             entry.version,
         )
@@ -71,7 +71,7 @@ async def async_migrate_entry(
         hass.config_entries.async_update_entry(entry, version=4)
 
     _LOGGER.debug(
-        "Migration of TAPO Local entry %s to version %s.%s successful",
+        "Migration of Tapo Local entry %s to version %s.%s successful",
         entry.title,
         entry.version,
         entry.minor_version,
@@ -80,7 +80,7 @@ async def async_migrate_entry(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up TAPO Local from a config entry."""
+    """Set up Tapo Local from a config entry."""
     is_dl100 = entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP
 
     # DL100 has its own local DLKLAP backend and must not depend on
