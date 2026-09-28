@@ -1,6 +1,6 @@
 # DL100 Wi-Fi reverse-engineering plan
 
-DL100 is a required, release-blocking device for TP-Link Local.
+DL100 is a required, release-blocking device for TAPO Local.
 
 The engineering target is **authorized local Wi-Fi control with no TP-Link account authentication, no cloud API call, and no Internet requirement at runtime or setup**.
 
@@ -21,7 +21,7 @@ The current public DLKLAP research establishes:
 - Once a session exists, lock status/control requests are local.
 - A previously established encrypted session can be restored by another controller without immediately contacting the cloud.
 
-That last point is useful research evidence, but **one-time cloud provisioning is not the final TP-Link Local design**.
+That last point is useful research evidence, but **one-time cloud provisioning is not the final TAPO Local design**.
 
 ## Verified live findings
 
@@ -153,7 +153,7 @@ Do not query user-code lists or write configuration during discovery.
 
 ## Success criteria
 
-DL100 Wi-Fi support is considered solved only when TP-Link Local can, after a fresh Home Assistant start:
+DL100 Wi-Fi support is considered solved only when TAPO Local can, after a fresh Home Assistant start:
 
 1. identify the owned DL100 locally;
 2. establish authorized session material without TP-Link cloud/account authentication;
