@@ -1,4 +1,4 @@
-<p align="center">\n  <img src="https://raw.githubusercontent.com/gigabytegrove/tapo-local/main/custom_components/tapo_local/brand/logo.png" alt="TAPO Local" width="620">\n</p>
+<p align="center"><img src="https://raw.githubusercontent.com/gigabytegrove/tapo-local/main/custom_components/tapo_local/brand/logo.png" alt="TAPO Local" width="620"></p>
 
 # TAPO Local
 
