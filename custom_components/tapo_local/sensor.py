@@ -28,9 +28,16 @@ async def async_setup_entry(
     entry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensor features exposed by python-kasa."""
+    """Set up sensors for the selected local backend."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
     entities: list[SensorEntity] = []
+
+    if coordinator.is_lock:
+        entities.append(TPLinkDL100BatterySensor(coordinator))
+        if coordinator.sysinfo.get("rssi") is not None:
+            entities.append(TPLinkDL100RssiSensor(coordinator))
+        async_add_entities(entities)
+        return
 
     if coordinator.device.get_feature("rssi"):
         entities.append(TPLinkRssiSensor(coordinator))
@@ -52,6 +59,42 @@ async def async_setup_entry(
         entities.append(TPLinkFeatureSensor(coordinator, feature_id))
 
     async_add_entities(entities)
+
+
+class TPLinkDL100BatterySensor(TPLinkLocalEntity, SensorEntity):
+    """DL100 battery level."""
+
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
+        super().__init__(coordinator, key="battery", name="Battery")
+
+    @property
+    def native_value(self):
+        info = self.coordinator.sysinfo
+        for key in ("battery_percentage", "battery_percent", "battery"):
+            value = info.get(key)
+            if value is not None:
+                return value
+        return None
+
+
+class TPLinkDL100RssiSensor(TPLinkLocalEntity, SensorEntity):
+    """DL100 Wi-Fi RSSI when supplied by the lock."""
+
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELSMILLIWATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
+        super().__init__(coordinator, key="rssi", name="Wi-Fi signal")
+
+    @property
+    def native_value(self):
+        return self.coordinator.sysinfo.get("rssi")
 
 
 class TPLinkRssiSensor(TPLinkKasaFeatureEntity, SensorEntity):
