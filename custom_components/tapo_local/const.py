@@ -1,7 +1,7 @@
-"""Constants for TP-Link Local."""
+"""Constants for TAPO Local."""
 
 DOMAIN = "tapo_local"
-NAME = "TP-Link Local"
+NAME = "TAPO Local"
 
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_TRANSPORT = "transport"
