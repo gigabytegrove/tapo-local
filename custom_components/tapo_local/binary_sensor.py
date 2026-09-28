@@ -39,6 +39,20 @@ async def async_setup_entry(
         ):
             entities.append(TPLinkFeatureBinarySensor(coordinator, feature_id))
 
+    for child in coordinator.device.children:
+        for feature_id, feature in child.features.items():
+            value = child.feature_value(feature_id)
+            if feature.type == Feature.Type.BinarySensor or (
+                feature.type == Feature.Type.Sensor and isinstance(value, bool)
+            ):
+                entities.append(
+                    TPLinkFeatureBinarySensor(
+                        coordinator,
+                        feature_id,
+                        target=child,
+                    )
+                )
+
     async_add_entities(entities)
 
 
@@ -73,6 +87,15 @@ class TPLinkMotionBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
 
 class TPLinkFeatureBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
     """Any additional boolean read-only feature provided by python-kasa."""
+
+    def __init__(
+        self,
+        coordinator: TPLinkLocalCoordinator,
+        feature_id: str,
+        *,
+        target=None,
+    ) -> None:
+        super().__init__(coordinator, feature_id, target=target)
 
     @property
     def is_on(self) -> bool:
