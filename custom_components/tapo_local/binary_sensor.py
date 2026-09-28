@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import TPLinkLocalCoordinator
+from .entity import TPLinkLocalEntity
 from .kasa_feature_entity import MANUAL_FEATURE_IDS, TPLinkKasaFeatureEntity
 
 
@@ -17,9 +18,14 @@ async def async_setup_entry(
     entry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up boolean read-only python-kasa features."""
+    """Set up binary sensors for the selected local backend."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
     entities: list[BinarySensorEntity] = []
+
+    if coordinator.is_lock:
+        entities.append(TPLinkDL100LowBatteryBinarySensor(coordinator))
+        async_add_entities(entities)
+        return
 
     if coordinator.device.get_feature("pir_triggered"):
         entities.append(TPLinkMotionBinarySensor(coordinator))
@@ -34,6 +40,22 @@ async def async_setup_entry(
             entities.append(TPLinkFeatureBinarySensor(coordinator, feature_id))
 
     async_add_entities(entities)
+
+
+class TPLinkDL100LowBatteryBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
+    """DL100 low-battery warning."""
+
+    _attr_device_class = BinarySensorDeviceClass.BATTERY
+
+    def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
+        super().__init__(coordinator, key="battery_low", name="Battery low")
+
+    @property
+    def is_on(self) -> bool:
+        info = self.coordinator.sysinfo
+        return bool(
+            info.get("at_low_battery", info.get("low_battery", False))
+        )
 
 
 class TPLinkMotionBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
