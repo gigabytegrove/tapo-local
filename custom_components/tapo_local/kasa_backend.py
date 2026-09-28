@@ -229,6 +229,11 @@ class KasaLocalDevice:
         return "pir_enabled" in features or "pir_triggered" in features
 
     @property
+    def is_fan(self) -> bool:
+        """Return whether the device exposes fan speed control."""
+        return self.get_feature("fan_speed_level") is not None
+
+    @property
     def is_light(self) -> bool:
         """Return whether the device exposes primary light capabilities."""
         features = self.features
@@ -297,6 +302,7 @@ class KasaLocalDevice:
                 "sysinfo": sysinfo,
                 "has_pir": self.has_pir,
                 "is_light": self.is_light,
+                "is_fan": self.is_fan,
                 "features": sorted(self.features),
                 "children": [
                     {
