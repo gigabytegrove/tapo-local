@@ -27,7 +27,7 @@ async def async_setup_entry(
     entities = [
         TPLinkFeatureNumber(coordinator, feature_id)
         for feature_id, feature in coordinator.device.features.items()
-        if feature.type == Feature.Type.Number and feature_id not in {"brightness", "color_temperature"}
+        if feature.type == Feature.Type.Number and feature_id not in {"brightness", "color_temperature", "fan_speed_level"}
     ]
     for child in coordinator.device.children:
         entities.extend(
