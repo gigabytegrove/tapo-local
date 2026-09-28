@@ -20,8 +20,10 @@ from kasa.deviceconfig import (
 )
 from kasa.exceptions import KasaException
 
+from .errors import TPLinkLocalRuntimeError
 
-class TPLinkLocalBackendError(Exception):
+
+class TPLinkLocalBackendError(TPLinkLocalRuntimeError):
     """Base error from the python-kasa backend."""
 
 
