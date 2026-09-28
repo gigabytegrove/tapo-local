@@ -93,6 +93,38 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            host = user_input[CONF_HOST].strip()
+
+            # If an authorized DL100 session import explicitly belongs to this
+            # host, use it before python-kasa/XOR or TDP. The encrypted DLKLAP
+            # exchange itself is the authoritative verification.
+            import_path = self.hass.config.path(DL100_SESSION_IMPORT)
+            import_bundle: dict[str, Any] | None = None
+            try:
+                import_bundle = await self.hass.async_add_executor_job(
+                    _read_session_import, import_path
+                )
+            except (FileNotFoundError, ValueError, json.JSONDecodeError):
+                pass
+
+            if (
+                import_bundle
+                and import_bundle.get("host") == host
+                and import_bundle.get("device_id")
+            ):
+                _LOGGER.info(
+                    "Using saved DL100 local-session identity for %s; "
+                    "skipping python-kasa/XOR and TDP discovery",
+                    host,
+                )
+                self._pending_dl100 = {
+                    "host": host,
+                    "model": "DL100",
+                    "device_type": "SMART.TAPOLOCK",
+                    "device_id": import_bundle["device_id"],
+                }
+                return await self.async_step_dl100_session()
+
             try:
                 await async_ensure_kasa(self.hass)
             except TPLinkLocalDependencyError:
@@ -104,7 +136,6 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 KasaLocalDevice = kasa_module.KasaLocalDevice
                 TPLinkLocalBackendError = kasa_module.TPLinkLocalBackendError
 
-                host = user_input[CONF_HOST].strip()
                 backend = KasaLocalDevice(host)
 
                 try:
@@ -235,11 +266,24 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             try:
                 state = await device.get_state()
-            except DL100LocalError:
+            except DL100LocalError as exc:
+                _LOGGER.warning(
+                    "DL100 local-session verification failed for %s: %s",
+                    self._pending_dl100["host"],
+                    exc,
+                )
                 errors["base"] = "dl100_session_rejected"
             except Exception:
+                _LOGGER.exception(
+                    "Unexpected DL100 local-session verification failure for %s",
+                    self._pending_dl100["host"],
+                )
                 errors["base"] = "unknown"
             else:
+                _LOGGER.info(
+                    "DL100 local-session verification succeeded for %s",
+                    self._pending_dl100["host"],
+                )
                 latest_session = device.export_session()
                 unique_id = self._pending_dl100["device_id"]
                 await self.async_set_unique_id(unique_id)
