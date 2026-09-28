@@ -54,6 +54,24 @@ class DL100SessionTests(unittest.TestCase):
         self.assertFalse(hasattr(backend.DL100LocalDevice, "_fetch_control_key"))
 
 
+class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sequence_is_persisted_even_on_rejected_request(self) -> None:
+        saver = AsyncMock()
+        device = backend.DL100LocalDevice(
+            "192.0.2.100",
+            session_state=_state(500),
+            session_saver=saver,
+        )
+
+        device._post_sync = lambda body, seq: (403, b"")
+        with self.assertRaises(backend.DL100SessionError):
+            await device.request("getLockStatus")
+
+        saver.assert_awaited_once()
+        saved = saver.await_args.args[0]
+        self.assertEqual(saved["seq"], 501)
+
+
 class DL100ControlTests(unittest.IsolatedAsyncioTestCase):
     async def test_set_lock_uses_local_1(self) -> None:
         device = backend.DL100LocalDevice(
