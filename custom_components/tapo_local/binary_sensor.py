@@ -96,6 +96,14 @@ class TPLinkFeatureBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
         target=None,
     ) -> None:
         super().__init__(coordinator, feature_id, target=target)
+        device_classes = {
+            "motion_detected": BinarySensorDeviceClass.MOTION,
+            "is_open": BinarySensorDeviceClass.OPENING,
+            "water_alert": BinarySensorDeviceClass.MOISTURE,
+            "battery_low": BinarySensorDeviceClass.BATTERY,
+        }
+        if feature_id in device_classes:
+            self._attr_device_class = device_classes[feature_id]
 
     @property
     def is_on(self) -> bool:
