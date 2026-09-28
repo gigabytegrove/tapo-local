@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from kasa import Feature
+
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import TPLinkLocalCoordinator
-from .entity import TPLinkLocalEntity
+from .kasa_feature_entity import MANUAL_FEATURE_IDS, TPLinkKasaFeatureEntity
 
 
 async def async_setup_entry(
@@ -18,21 +17,41 @@ async def async_setup_entry(
     entry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up binary sensors."""
+    """Set up boolean read-only python-kasa features."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
-    if coordinator.has_pir:
-        async_add_entities([TPLinkMotionBinarySensor(coordinator)])
+    entities: list[BinarySensorEntity] = []
+
+    if coordinator.device.get_feature("pir_triggered"):
+        entities.append(TPLinkMotionBinarySensor(coordinator))
+
+    for feature_id, feature in coordinator.device.features.items():
+        if feature_id in MANUAL_FEATURE_IDS:
+            continue
+        value = coordinator.device.feature_value(feature_id)
+        if feature.type == Feature.Type.BinarySensor or (
+            feature.type == Feature.Type.Sensor and isinstance(value, bool)
+        ):
+            entities.append(TPLinkFeatureBinarySensor(coordinator, feature_id))
+
+    async_add_entities(entities)
 
 
-class TPLinkMotionBinarySensor(TPLinkLocalEntity, BinarySensorEntity):
-    """Calculated live PIR motion state."""
+class TPLinkMotionBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
+    """Calculated live PIR motion state from python-kasa."""
 
     _attr_device_class = BinarySensorDeviceClass.MOTION
 
     def __init__(self, coordinator: TPLinkLocalCoordinator) -> None:
-        super().__init__(coordinator, key="motion", name="Motion")
+        super().__init__(coordinator, "pir_triggered", key="motion", name="Motion")
 
     @property
     def is_on(self) -> bool:
-        pir_state = self.coordinator.data.get("pir_state") if self.coordinator.data else None
-        return bool(pir_state and pir_state.triggered)
+        return bool(self.feature_value)
+
+
+class TPLinkFeatureBinarySensor(TPLinkKasaFeatureEntity, BinarySensorEntity):
+    """Any additional boolean read-only feature provided by python-kasa."""
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.feature_value)
