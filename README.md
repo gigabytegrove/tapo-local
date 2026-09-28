@@ -10,6 +10,80 @@ It is built for people who want direct LAN control, deterministic protocol selec
 
 > Home Assistant integration domain: **tapo_local**. The domain is intentionally unchanged so existing installations upgrade safely.
 
+## Installation
+
+### Option 1: HACS custom repository
+
+HACS is the recommended installation method.
+
+1. Open **HACS** in Home Assistant.
+2. Open the **three-dot menu** and choose **Custom repositories**.
+3. Add:
+   - **Repository:** `https://github.com/gigabytegrove/tapo-local`
+   - **Type:** `Integration`
+4. Search HACS for **TAPO Local**.
+5. Select **Download**.
+6. Restart Home Assistant.
+7. Open **Settings -> Devices & services -> Add integration**.
+8. Search for **TAPO Local**.
+9. Enter the local IP address or hostname of the device you want to add.
+
+If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, TAPO Local will request the TP-Link account credentials authorized for that device during initial setup. Those plaintext credentials are not retained.
+
+### Option 2: Manual installation
+
+1. Download or clone this repository.
+2. Copy the integration directory:
+
+   ```text
+   custom_components/tapo_local
+   ```
+
+   into your Home Assistant configuration directory so the final path is:
+
+   ```text
+   /config/custom_components/tapo_local
+   ```
+
+3. Restart Home Assistant.
+4. Open **Settings -> Devices & services -> Add integration**.
+5. Search for **TAPO Local** and add the device by IP address or hostname.
+
+For Home Assistant Container installations, the integration directory must be inside the configuration volume mounted at `/config`.
+
+### python-kasa dependency
+
+TAPO Local uses **python-kasa 0.10.2** for the supported Kasa/Tapo device families.
+
+Normal Home Assistant users **do not need to install python-kasa manually**. TAPO Local declares the dependency in `manifest.json`, and Home Assistant's requirements manager installs it automatically when the integration loads.
+
+The required runtime packages are:
+
+```text
+python-kasa[speedups]==0.10.2
+cryptography>=1.9
+```
+
+For development, protocol testing, or a standalone Python environment outside Home Assistant, install the same pinned dependency with:
+
+```bash
+python3 -m pip install 'python-kasa[speedups]==0.10.2' 'cryptography>=1.9'
+```
+
+Do **not** manually `pip install` python-kasa into a normal Home Assistant installation. Home Assistant should own and manage the integration's Python requirements.
+
+### Add your first device
+
+After installation and restart:
+
+1. Go to **Settings -> Devices & services**.
+2. Select **Add integration**.
+3. Choose **TAPO Local**.
+4. Enter the device IP address or hostname.
+5. Complete local authentication if the device requires it.
+
+TAPO Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
+
 ## What TAPO Local supports
 
 TAPO Local uses two local backends:
@@ -113,29 +187,6 @@ Specialized mappings are used when they provide a better HA experience:
 - DL100 -> native lock
 
 Additional compatible python-kasa features flow into generic sensor, binary sensor, switch, number, select, and button entities.
-
-## Installation
-
-### HACS custom repository
-
-1. Add https://github.com/gigabytegrove/tapo-local to HACS as a custom **Integration** repository.
-2. Install **TAPO Local**.
-3. Restart Home Assistant.
-4. Go to **Settings -> Devices & services -> Add integration**.
-5. Search for **TAPO Local**.
-6. Enter the device IP address or hostname.
-7. If the device uses an authenticated SMART protocol, TAPO Local will ask for credentials during initial local verification.
-
-No separate python-kasa installation is required.
-
-The manifest pins:
-
-~~~text
-python-kasa[speedups]==0.10.2
-cryptography>=1.9
-~~~
-
-Home Assistant's requirements manager installs and validates those dependencies.
 
 ## Local-only policy
 
