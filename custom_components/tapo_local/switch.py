@@ -19,6 +19,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up switch features exposed by python-kasa."""
     coordinator: TPLinkLocalCoordinator = entry.runtime_data
+    if coordinator.is_lock:
+        async_add_entities([])
+        return
     entities: list[SwitchEntity] = []
 
     if coordinator.device.get_feature("state"):
