@@ -1,7 +1,7 @@
 {
   "domain": "tapo_local",
   "name": "TAPO Local",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "config_flow": true,
   "documentation": "https://github.com/gigabytegrove/tapo-local",
   "issue_tracker": "https://github.com/gigabytegrove/tapo-local/issues",
