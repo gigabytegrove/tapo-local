@@ -17,6 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 KASA_DISTRIBUTION = "python-kasa"
 KASA_VERSION = "0.10.2"
 KASA_REQUIREMENT = f"python-kasa[speedups]=={KASA_VERSION}"
+CRYPTO_REQUIREMENT = "cryptography>=1.9"
+REQUIRED_REQUIREMENTS = [KASA_REQUIREMENT, CRYPTO_REQUIREMENT]
 DEPENDENCY_ISSUE_ID = "python_kasa_dependency"
 
 
@@ -43,19 +45,18 @@ def _create_dependency_issue(hass: HomeAssistant, detail: str) -> None:
         severity=ir.IssueSeverity.ERROR,
         translation_key="python_kasa_dependency",
         translation_placeholders={
-            "requirement": KASA_REQUIREMENT,
+            "requirement": ", ".join(REQUIRED_REQUIREMENTS),
             "detail": detail,
         },
     )
 
 
 async def async_ensure_kasa(hass: HomeAssistant) -> None:
-    """Ensure python-kasa exists, is the required version, and imports cleanly.
+    """Ensure the local-control runtime is installed and importable.
 
     Home Assistant normally processes manifest requirements before loading an
-    integration. This explicit preflight provides a second, integration-owned
-    safety check and asks Home Assistant's own requirements manager to repair a
-    missing or mismatched install before any device I/O begins.
+    integration. This explicit preflight provides a second integration-owned
+    safety check before any device I/O begins.
     """
     before = installed_kasa_version()
 
@@ -63,7 +64,7 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
         state = "missing" if before is None else f"version {before}"
         _LOGGER.warning(
             "TP-Link Local requires %s but found %s; asking Home Assistant to "
-            "install the required dependency before device setup",
+            "install the required local-control runtime before device setup",
             KASA_REQUIREMENT,
             state,
         )
@@ -72,14 +73,15 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
         await async_process_requirements(
             hass,
             DOMAIN,
-            [KASA_REQUIREMENT],
+            REQUIRED_REQUIREMENTS,
             is_built_in=False,
         )
     except RequirementsNotFound as exc:
         detail = (
-            "Home Assistant could not install the required python-kasa package. "
-            "No TP-Link device commands were attempted. Check Home Assistant "
-            "Internet/DNS access and available storage, then reload or restart."
+            "Home Assistant could not install the required local-control Python "
+            "packages. No TP-Link device commands were attempted. Check Home "
+            "Assistant Internet/DNS access and available storage, then reload or "
+            "restart."
         )
         _create_dependency_issue(hass, detail)
         raise TPLinkLocalDependencyError(detail) from exc
@@ -97,11 +99,12 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
 
     try:
         import_module("kasa")
+        import_module("cryptography")
     except (ImportError, OSError) as exc:
         detail = (
-            f"python-kasa {installed} is installed but cannot be imported: {exc}. "
-            "No TP-Link device commands were attempted. Reload or restart Home "
-            "Assistant after correcting the dependency environment."
+            f"The required local-control runtime is installed but cannot be "
+            f"imported: {exc}. No TP-Link device commands were attempted. Reload "
+            "or restart Home Assistant after correcting the dependency environment."
         )
         _create_dependency_issue(hass, detail)
         raise TPLinkLocalDependencyError(detail) from exc
@@ -110,6 +113,6 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
 
     if before != installed:
         _LOGGER.info(
-            "TP-Link Local dependency ready: python-kasa %s is installed and importable",
+            "TP-Link Local runtime ready: python-kasa %s and cryptography are importable",
             installed,
         )
