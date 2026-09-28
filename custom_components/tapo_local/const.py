@@ -1,7 +1,7 @@
-"""Constants for TAPO Local."""
+"""Constants for Tapo Local."""
 
 DOMAIN = "tapo_local"
-NAME = "TAPO Local"
+NAME = "Tapo Local"
 
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_TRANSPORT = "transport"
