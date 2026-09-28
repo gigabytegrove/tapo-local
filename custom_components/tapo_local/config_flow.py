@@ -148,7 +148,7 @@ def _remove_session_import(path: str) -> None:
 class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a TP-Link Local config flow."""
 
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self) -> None:
         self._pending_dl100: dict[str, Any] | None = None
