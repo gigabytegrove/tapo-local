@@ -17,8 +17,7 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     TRANSPORT_DLKLAP,
 )
-from .dl100_backend import DL100LocalDevice, DL100LocalError
-from .kasa_backend import KasaLocalDevice, TPLinkLocalBackendError
+from .errors import TPLinkLocalRuntimeError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
-        device: KasaLocalDevice | DL100LocalDevice,
+        device: Any,
     ) -> None:
         self.entry = entry
         self.device = device
@@ -57,7 +56,7 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.device.get_state()
-        except (TPLinkLocalBackendError, DL100LocalError) as exc:
+        except TPLinkLocalRuntimeError as exc:
             raise UpdateFailed(str(exc)) from exc
 
         self.sysinfo = data["sysinfo"]
@@ -68,6 +67,6 @@ class TPLinkLocalCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.has_pir = (
             False
             if self.is_lock
-            else isinstance(self.device, KasaLocalDevice) and self.device.has_pir
+            else bool(getattr(self.device, "has_pir", False))
         )
         return data
