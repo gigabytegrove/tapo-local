@@ -64,11 +64,21 @@ def _read_session_import(path: str) -> dict[str, Any]:
     }
 
 
-def _write_session_import(path: str, state: dict[str, Any]) -> None:
-    """Persist the advanced DLKLAP sequence during setup verification."""
+def _write_session_import(
+    path: str,
+    state: dict[str, Any],
+    metadata: dict[str, Any],
+) -> None:
+    """Persist sequence advancement without losing DL100 identity metadata."""
     target = Path(path)
     tmp = target.with_name(f"{target.name}.tmp")
-    tmp.write_text(json.dumps({"session": state}, indent=2))
+    payload = {
+        key: value
+        for key, value in metadata.items()
+        if key in {"host", "device_id", "terminal_uuid"} and value
+    }
+    payload["session"] = state
+    tmp.write_text(json.dumps(payload, indent=2))
     tmp.chmod(0o600)
     tmp.replace(target)
 
@@ -257,6 +267,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     _write_session_import,
                     import_path,
                     state,
+                    import_bundle,
                 )
 
             device = DL100LocalDevice(
