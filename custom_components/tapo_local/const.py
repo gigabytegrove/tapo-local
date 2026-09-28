@@ -6,8 +6,15 @@ NAME = "TP-Link Local"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_TRANSPORT = "transport"
 CONF_SESSION = "session"
+CONF_DEVICE_FAMILY = "device_family"
+CONF_ENCRYPTION_TYPE = "encryption_type"
+CONF_LOGIN_VERSION = "login_version"
+CONF_HTTPS = "https"
+CONF_HTTP_PORT = "http_port"
+CONF_CREDENTIALS_HASH = "credentials_hash"
 
 TRANSPORT_XOR = "xor"
+TRANSPORT_SMART = "smart"
 TRANSPORT_DLKLAP = "dlklap"
 
 DEFAULT_PORT = 9999
@@ -17,8 +24,31 @@ DEFAULT_LOCK_POLL_INTERVAL = 30
 MIN_POLL_INTERVAL = 2
 MAX_POLL_INTERVAL = 300
 
-SUPPORTED_DEVICE_TYPES = {"IOT.SMARTPLUGSWITCH"}
-SUPPORTED_MODELS = {"KS200", "KS200M"}
+SUPPORTED_LEGACY_DEVICE_TYPES = {
+    "Plug",
+    "WallSwitch",
+    "Dimmer",
+    "Strip",
+    "Bulb",
+    "LightStrip",
+}
+
+SUPPORTED_SMART_FAMILIES = {
+    "SMART.KASAPLUG",
+    "SMART.KASASWITCH",
+    "SMART.TAPOPLUG",
+    "SMART.TAPOBULB",
+    "SMART.TAPOSWITCH",
+}
+
+SUPPORTED_SMART_DEVICE_TYPES = {
+    "Plug",
+    "WallSwitch",
+    "Dimmer",
+    "Strip",
+    "Bulb",
+    "LightStrip",
+}
 
 PIR_MODULE = "smartlife.iot.PIR"
 
