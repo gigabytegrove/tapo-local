@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Add a local TP-Link device",
-        "description": "Connect directly to a supported device by IP/hostname. TP-Link Local forces the known local protocol through python-kasa instead of using automatic protocol selection.",
+        "description": "Connect directly to a supported device by IP/hostname. TP-Link Local verifies and, when necessary, asks Home Assistant to install its required python-kasa runtime before contacting the device.",
         "data": {
           "host": "IP address or hostname"
         }
@@ -12,6 +12,7 @@
     },
     "error": {
       "cannot_connect": "Unable to connect to the device using its forced local protocol.",
+      "dependency_unavailable": "TP-Link Local could not prepare its required python-kasa runtime. No device commands were attempted. Check Settings > System > Repairs and the Home Assistant log for the exact dependency error.",
       "unsupported_device": "The device responded but is not supported by this TP-Link Local build.",
       "unknown": "Unexpected error."
     },
@@ -28,6 +29,12 @@
           "poll_interval": "Polling interval (seconds)"
         }
       }
+    }
+  },
+  "issues": {
+    "python_kasa_dependency": {
+      "title": "TP-Link Local could not prepare python-kasa",
+      "description": "TP-Link Local requires {requirement}. Home Assistant was unable to leave that dependency in a working state. {detail}"
     }
   }
 }
