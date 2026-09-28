@@ -31,8 +31,6 @@ SUPPORTED_LEGACY_DEVICE_TYPES = {
     "Strip",
     "Bulb",
     "LightStrip",
-    "Hub",
-    "Fan",
 }
 
 SUPPORTED_SMART_FAMILIES = {
@@ -52,6 +50,8 @@ SUPPORTED_SMART_DEVICE_TYPES = {
     "Strip",
     "Bulb",
     "LightStrip",
+    "Hub",
+    "Fan",
 }
 
 PIR_MODULE = "smartlife.iot.PIR"
