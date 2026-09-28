@@ -32,6 +32,41 @@ PLATFORMS = [
 ]
 
 
+async def async_migrate_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> bool:
+    """Migrate older TP-Link Local config entries to the current schema."""
+    _LOGGER.debug(
+        "Migrating TP-Link Local entry %s from version %s.%s",
+        entry.title,
+        entry.version,
+        entry.minor_version,
+    )
+
+    if entry.version > 3:
+        _LOGGER.error(
+            "Cannot migrate TP-Link Local entry %s from future version %s",
+            entry.title,
+            entry.version,
+        )
+        return False
+
+    # Versions 1 and 2 already stored the same host/model/device_type/transport
+    # fields used by the python-kasa XOR runtime. Version 3 adds DL100 setup but
+    # requires no destructive data transformation for existing switch entries.
+    if entry.version < 3:
+        hass.config_entries.async_update_entry(entry, version=3)
+
+    _LOGGER.debug(
+        "Migration of TP-Link Local entry %s to version %s.%s successful",
+        entry.title,
+        entry.version,
+        entry.minor_version,
+    )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up TP-Link Local from a config entry."""
     try:
