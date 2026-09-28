@@ -11,6 +11,8 @@ from .kasa_backend import KasaLocalDevice
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
