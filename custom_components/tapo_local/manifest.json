@@ -1,6 +1,6 @@
 {
   "domain": "tapo_local",
-  "name": "TP-Link Local",
+  "name": "TAPO Local",
   "version": "0.4.6",
   "config_flow": true,
   "documentation": "https://github.com/gigabytegrove/tapo-local",
