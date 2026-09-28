@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from homeassistant.components.lock import LockEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import TPLinkLocalCoordinator
-from .dl100_backend import DL100LocalDevice
+from .dl100_backend import DL100LocalDevice, DL100LocalError
 from .entity import TPLinkLocalEntity
 
 
@@ -46,11 +47,17 @@ class TPLinkDL100Lock(TPLinkLocalEntity, LockEntity):
     async def async_lock(self, **kwargs) -> None:
         device = self.coordinator.device
         assert isinstance(device, DL100LocalDevice)
-        await device.set_lock(True)
+        try:
+            await device.set_lock(True)
+        except DL100LocalError as exc:
+            raise HomeAssistantError(str(exc)) from exc
         await self.coordinator.async_request_refresh()
 
     async def async_unlock(self, **kwargs) -> None:
         device = self.coordinator.device
         assert isinstance(device, DL100LocalDevice)
-        await device.set_lock(False)
+        try:
+            await device.set_lock(False)
+        except DL100LocalError as exc:
+            raise HomeAssistantError(str(exc)) from exc
         await self.coordinator.async_request_refresh()
