@@ -11,11 +11,17 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
-from homeassistant.const import CONF_HOST
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.importlib import async_import_module
 
 from .const import (
+    CONF_CREDENTIALS_HASH,
+    CONF_DEVICE_FAMILY,
+    CONF_ENCRYPTION_TYPE,
+    CONF_HTTPS,
+    CONF_HTTP_PORT,
+    CONF_LOGIN_VERSION,
     CONF_POLL_INTERVAL,
     CONF_SESSION,
     CONF_TRANSPORT,
@@ -25,8 +31,11 @@ from .const import (
     DOMAIN,
     MAX_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
-    SUPPORTED_MODELS,
+    SUPPORTED_LEGACY_DEVICE_TYPES,
+    SUPPORTED_SMART_DEVICE_TYPES,
+    SUPPORTED_SMART_FAMILIES,
     TRANSPORT_DLKLAP,
+    TRANSPORT_SMART,
     TRANSPORT_XOR,
 )
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
@@ -36,7 +45,56 @@ from .discovery import async_targeted_tdp_discovery
 _LOGGER = logging.getLogger(__name__)
 
 USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
+SMART_CREDENTIALS_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): cv.string,
+        vol.Required(CONF_PASSWORD): cv.string,
+    }
+)
 DL100_RETRY_SCHEMA = vol.Schema({})
+
+
+def _smart_connection_from_discovery(
+    discovery: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return an explicit supported SMART connection from targeted TDP data."""
+    family = str(discovery.get("device_type") or "")
+    if family not in SUPPORTED_SMART_FAMILIES:
+        return None
+
+    scheme = discovery.get("mgt_encrypt_schm")
+    if not isinstance(scheme, dict):
+        return None
+
+    encryption = str(scheme.get("encrypt_type") or "").upper()
+    if encryption not in {"AES", "KLAP"}:
+        return None
+
+    login_version = scheme.get("lv")
+    if login_version not in (None, ""):
+        try:
+            login_version = int(login_version)
+        except (TypeError, ValueError):
+            return None
+    else:
+        login_version = None
+
+    http_port = scheme.get("http_port")
+    if http_port not in (None, ""):
+        try:
+            http_port = int(http_port)
+        except (TypeError, ValueError):
+            return None
+    else:
+        http_port = None
+
+    return {
+        "device_family": family,
+        "encryption_type": encryption,
+        "login_version": login_version,
+        "https": bool(scheme.get("is_support_https", False)),
+        "http_port": http_port,
+    }
 
 
 def _read_session_import(path: str) -> dict[str, Any]:
@@ -94,6 +152,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._pending_dl100: dict[str, Any] | None = None
+        self._pending_smart: dict[str, Any] | None = None
 
     async def async_step_user(
         self,
@@ -189,6 +248,11 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if discovery:
                         model = str(discovery.get("device_model") or "")
                         dtype = str(discovery.get("device_type") or "")
+                        device_id = str(
+                            discovery.get("device_id")
+                            or discovery.get("deviceId")
+                            or host
+                        )
                         if (
                             model.split("(", 1)[0].strip() == "DL100"
                             and dtype == "SMART.TAPOLOCK"
@@ -197,20 +261,29 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 "host": host,
                                 "model": model or "DL100",
                                 "device_type": dtype,
-                                "device_id": str(
-                                    discovery.get("device_id")
-                                    or discovery.get("deviceId")
-                                    or host
-                                ),
+                                "device_id": device_id,
                             }
                             return await self.async_step_dl100_session()
+
+                        smart_connection = _smart_connection_from_discovery(
+                            discovery
+                        )
+                        if smart_connection is not None:
+                            self._pending_smart = {
+                                "host": host,
+                                "model": model,
+                                "device_id": device_id,
+                                **smart_connection,
+                            }
+                            return await self.async_step_smart_credentials()
+
                         errors["base"] = "unsupported_device"
                     else:
                         errors["base"] = "cannot_connect"
                 else:
                     model = str(info["model"])
-                    model_base = model.split("(", 1)[0].strip()
-                    if model_base not in SUPPORTED_MODELS:
+                    device_type = str(info.get("device_type") or "")
+                    if device_type not in SUPPORTED_LEGACY_DEVICE_TYPES:
                         errors["base"] = "unsupported_device"
                     else:
                         unique_id = str(info.get("device_id") or host)
@@ -224,7 +297,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             data={
                                 CONF_HOST: host,
                                 "model": model,
-                                "device_type": str(info.get("device_type") or ""),
+                                "device_type": device_type,
                                 CONF_TRANSPORT: TRANSPORT_XOR,
                             },
                         )
@@ -232,6 +305,99 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=USER_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_smart_credentials(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Authenticate a modern Kasa/Tapo device locally, then store only its hash."""
+        if self._pending_smart is None:
+            return self.async_abort(reason="cannot_connect")
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            kasa_module = await async_import_module(
+                self.hass, f"{__package__}.kasa_backend"
+            )
+            KasaLocalDevice = kasa_module.KasaLocalDevice
+            TPLinkLocalAuthenticationError = (
+                kasa_module.TPLinkLocalAuthenticationError
+            )
+            TPLinkLocalBackendError = kasa_module.TPLinkLocalBackendError
+
+            pending = self._pending_smart
+            backend = KasaLocalDevice(
+                pending["host"],
+                device_family=pending["device_family"],
+                encryption_type=pending["encryption_type"],
+                login_version=pending.get("login_version"),
+                https=bool(pending.get("https", False)),
+                http_port=pending.get("http_port"),
+                username=user_input[CONF_USERNAME],
+                password=user_input[CONF_PASSWORD],
+            )
+
+            try:
+                info = await backend.async_probe()
+            except TPLinkLocalAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except TPLinkLocalBackendError:
+                errors["base"] = "cannot_connect"
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected local SMART verification failure for %s",
+                    pending["host"],
+                )
+                errors["base"] = "unknown"
+            else:
+                device_type = str(info.get("device_type") or "")
+                credentials_hash = info.get("credentials_hash")
+                if device_type not in SUPPORTED_SMART_DEVICE_TYPES:
+                    errors["base"] = "unsupported_device"
+                elif not credentials_hash:
+                    errors["base"] = "credentials_hash_unavailable"
+                else:
+                    unique_id = str(
+                        info.get("device_id")
+                        or pending.get("device_id")
+                        or pending["host"]
+                    )
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured(
+                        updates={CONF_HOST: pending["host"]}
+                    )
+
+                    data = {
+                        CONF_HOST: pending["host"],
+                        "model": str(info.get("model") or pending.get("model") or ""),
+                        "device_type": device_type,
+                        CONF_TRANSPORT: TRANSPORT_SMART,
+                        CONF_DEVICE_FAMILY: pending["device_family"],
+                        CONF_ENCRYPTION_TYPE: pending["encryption_type"],
+                        CONF_HTTPS: bool(pending.get("https", False)),
+                        CONF_CREDENTIALS_HASH: str(credentials_hash),
+                    }
+                    if pending.get("login_version") is not None:
+                        data[CONF_LOGIN_VERSION] = pending["login_version"]
+                    if pending.get("http_port") is not None:
+                        data[CONF_HTTP_PORT] = pending["http_port"]
+
+                    return self.async_create_entry(
+                        title=str(
+                            info.get("alias")
+                            or info.get("model")
+                            or pending.get("model")
+                            or "TP-Link device"
+                        ),
+                        data=data,
+                    )
+
+        return self.async_show_form(
+            step_id="smart_credentials",
+            data_schema=SMART_CREDENTIALS_SCHEMA,
             errors=errors,
         )
 
