@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "custom_components" / "tapo_local"
@@ -73,29 +73,71 @@ class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DL100ControlTests(unittest.IsolatedAsyncioTestCase):
-    async def test_set_lock_uses_local_1(self) -> None:
+    async def test_set_lock_uses_local_1_and_verifies_state(self) -> None:
         device = backend.DL100LocalDevice(
             "192.0.2.100",
             session_state=_state(),
         )
-        device.request = AsyncMock(return_value={})
-        await device.set_lock(True)
-        device.request.assert_awaited_once_with(
-            "setLockStatus",
-            {"lock_status": 0, "sa_user_id": "local_1"},
+        device.request = AsyncMock(
+            side_effect=[{}, {"lock_status": 0}]
+        )
+        with patch.object(backend.asyncio, "sleep", new=AsyncMock()):
+            await device.set_lock(True)
+
+        self.assertEqual(
+            device.request.await_args_list[0].args,
+            (
+                "setLockStatus",
+                {"lock_status": 0, "sa_user_id": "local_1"},
+            ),
+        )
+        self.assertEqual(
+            device.request.await_args_list[1].args,
+            ("getLockStatus",),
         )
 
-    async def test_set_unlock_uses_local_1(self) -> None:
+    async def test_set_unlock_uses_local_1_and_verifies_state(self) -> None:
         device = backend.DL100LocalDevice(
             "192.0.2.100",
             session_state=_state(),
         )
-        device.request = AsyncMock(return_value={})
-        await device.set_lock(False)
-        device.request.assert_awaited_once_with(
-            "setLockStatus",
-            {"lock_status": 1, "sa_user_id": "local_1"},
+        device.request = AsyncMock(
+            side_effect=[{}, {"lock_status": 1}]
         )
+        with patch.object(backend.asyncio, "sleep", new=AsyncMock()):
+            await device.set_lock(False)
+
+        self.assertEqual(
+            device.request.await_args_list[0].args,
+            (
+                "setLockStatus",
+                {"lock_status": 1, "sa_user_id": "local_1"},
+            ),
+        )
+        self.assertEqual(
+            device.request.await_args_list[1].args,
+            ("getLockStatus",),
+        )
+
+    async def test_set_lock_raises_when_physical_state_does_not_change(self) -> None:
+        device = backend.DL100LocalDevice(
+            "192.0.2.100",
+            session_state=_state(),
+        )
+        device.request = AsyncMock(
+            side_effect=[
+                {},
+                {"lock_status": 1},
+                {"lock_status": 1},
+                {"lock_status": 1},
+            ]
+        )
+        with patch.object(backend.asyncio, "sleep", new=AsyncMock()):
+            with self.assertRaisesRegex(
+                backend.DL100LocalError,
+                "physical state remained lock_status=1",
+            ):
+                await device.set_lock(True)
 
 
 if __name__ == "__main__":
