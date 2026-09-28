@@ -54,3 +54,4 @@ PIR_MODULE = "smartlife.iot.PIR"
 
 DL100_SESSION_IMPORT = ".storage/tapo_local_dl100_session_import.json"
 DL100_SESSION_STORE_VERSION = 1
+KASA_CREDENTIAL_STORE_VERSION = 1
