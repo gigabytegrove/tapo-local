@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.importlib import async_import_module
 from homeassistant.helpers.storage import Store
 
 from .const import (
@@ -74,10 +75,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except TPLinkLocalDependencyError as exc:
         raise ConfigEntryNotReady(str(exc)) from exc
 
-    from .coordinator import TPLinkLocalCoordinator
+    coordinator_module = await async_import_module(
+        hass, f"{__package__}.coordinator"
+    )
+    TPLinkLocalCoordinator = coordinator_module.TPLinkLocalCoordinator
 
     if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
-        from .dl100_backend import DL100LocalDevice
+        dl100_module = await async_import_module(
+            hass, f"{__package__}.dl100_backend"
+        )
+        DL100LocalDevice = dl100_module.DL100LocalDevice
 
         store: Store[dict] = Store(
             hass,
@@ -110,8 +117,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception as exc:
             raise ConfigEntryNotReady(f"DL100 local session is invalid: {exc}") from exc
     else:
-        from .kasa_backend import KasaLocalDevice
-
+        kasa_module = await async_import_module(
+            hass, f"{__package__}.kasa_backend"
+        )
+        KasaLocalDevice = kasa_module.KasaLocalDevice
         device = KasaLocalDevice(entry.data[CONF_HOST])
 
     coordinator = TPLinkLocalCoordinator(hass, entry, device)
