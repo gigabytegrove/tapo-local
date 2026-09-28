@@ -16,6 +16,13 @@ TO_REDACT = {
     "alias",
     "latitude_i",
     "longitude_i",
+    "credentials_hash",
+    "username",
+    "password",
+    "cookie",
+    "local_seed",
+    "remote_seed",
+    "lmk",
 }
 
 
