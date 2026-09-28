@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4
+
+### Fixed
+
+- DL100 transient LAN poll failures no longer make the entire device immediately unavailable after a single missed request.
+- Tapo Local retains the DL100's last-known-good state for up to two consecutive connection failures, then marks it unavailable on the third consecutive miss.
+- DL100 protocol/session failures still mark the device unavailable immediately rather than being masked as transient connectivity.
+- Added explicit warning, error, and recovery logging for DL100 local polling so intermittent failures are visible in Home Assistant logs.
+- Corrected the coordinator display name to Tapo Local.
+
+
 ## 0.5.3
 
 - Corrected the product name capitalization throughout the repository and Home Assistant metadata from `TAPO Local` to `Tapo Local`.
