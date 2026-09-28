@@ -20,10 +20,12 @@ from urllib.parse import urlencode
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from .errors import TPLinkLocalRuntimeError
+
 SESSION_COOKIE_NAME = "TP_SESSIONID"
 
 
-class DL100LocalError(Exception):
+class DL100LocalError(TPLinkLocalRuntimeError):
     """Base DL100 local runtime error."""
 
 
