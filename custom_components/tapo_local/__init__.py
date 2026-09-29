@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
@@ -13,6 +14,10 @@ from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_CREDENTIALS_HASH,
+    CONF_CLOUD_PASSWORD,
+    CONF_CLOUD_USERNAME,
+    CONF_DL100_DEVICE_ID,
+    CONF_TERMINAL_UUID,
     CONF_DEVICE_FAMILY,
     CONF_ENCRYPTION_TYPE,
     CONF_HTTPS,
@@ -102,6 +107,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass, f"{__package__}.dl100_backend"
         )
         DL100LocalDevice = dl100_module.DL100LocalDevice
+        auth_module = await async_import_module(
+            hass, f"{__package__}.dl100_auth"
+        )
+        establish_session = auth_module.establish_session
 
         store: Store[dict] = Store(
             hass,
@@ -111,25 +120,69 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             atomic_writes=True,
         )
         stored = await store.async_load()
-        session_state = None
-        if isinstance(stored, dict) and isinstance(stored.get("session"), dict):
-            session_state = stored["session"]
-        elif isinstance(entry.data.get(CONF_SESSION), dict):
-            session_state = entry.data[CONF_SESSION]
+        private_data = dict(stored) if isinstance(stored, dict) else {}
 
-        if session_state is None:
-            raise ConfigEntryNotReady(
-                "DL100 local session is missing; re-add the device with a session import"
+        # Migrate setup-time sensitive values into the private Store.
+        for key in (
+            CONF_SESSION,
+            CONF_CLOUD_USERNAME,
+            CONF_CLOUD_PASSWORD,
+            CONF_TERMINAL_UUID,
+            CONF_DL100_DEVICE_ID,
+        ):
+            if key not in private_data and entry.data.get(key) is not None:
+                private_data[key] = entry.data[key]
+
+        session_state = private_data.get(CONF_SESSION)
+        username = private_data.get(CONF_CLOUD_USERNAME)
+        password = private_data.get(CONF_CLOUD_PASSWORD)
+        terminal_uuid = private_data.get(CONF_TERMINAL_UUID)
+        device_id = private_data.get(CONF_DL100_DEVICE_ID)
+
+        async def _save_private_session(state: dict) -> None:
+            private_data[CONF_SESSION] = state
+            await store.async_save(private_data)
+
+        async def _refresh_dl100_session() -> dict:
+            if not username or not password:
+                raise RuntimeError(
+                    "DL100 owner credentials are unavailable for automatic reauthentication"
+                )
+            provisioned = await hass.async_add_executor_job(
+                partial(
+                    establish_session,
+                    entry.data[CONF_HOST],
+                    str(username),
+                    str(password),
+                    terminal_uuid=str(terminal_uuid) if terminal_uuid else None,
+                    device_id=str(device_id) if device_id else None,
+                )
             )
+            private_data[CONF_SESSION] = provisioned["session"]
+            private_data[CONF_TERMINAL_UUID] = provisioned["terminal_uuid"]
+            private_data[CONF_DL100_DEVICE_ID] = provisioned["device_id"]
+            await store.async_save(private_data)
+            return provisioned["session"]
 
-        async def _save_session(state: dict) -> None:
-            await store.async_save({"session": state})
+        if not isinstance(session_state, dict):
+            if username and password:
+                try:
+                    session_state = await _refresh_dl100_session()
+                except Exception as exc:
+                    raise ConfigEntryNotReady(
+                        f"DL100 automatic session provisioning failed: {exc}"
+                    ) from exc
+            else:
+                raise ConfigEntryNotReady(
+                    "DL100 session and owner credentials are missing; re-add the device"
+                )
 
         try:
             device = DL100LocalDevice(
                 entry.data[CONF_HOST],
                 session_state=session_state,
-                session_saver=_save_session,
+                session_saver=_save_private_session,
+                session_refresher=_refresh_dl100_session if username and password else None,
             )
         except Exception as exc:
             raise ConfigEntryNotReady(f"DL100 local session is invalid: {exc}") from exc
@@ -184,11 +237,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.config_entries.async_update_entry(entry, data=new_data)
 
     if entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
-        latest = device.export_session()
-        await _save_session(latest)
-        if CONF_SESSION in entry.data:
-            new_data = dict(entry.data)
-            new_data.pop(CONF_SESSION, None)
+        private_data[CONF_SESSION] = device.export_session()
+        await store.async_save(private_data)
+
+        # Keep cloud credentials and session keys out of the normal config entry.
+        sensitive_keys = {
+            CONF_SESSION,
+            CONF_CLOUD_USERNAME,
+            CONF_CLOUD_PASSWORD,
+            CONF_TERMINAL_UUID,
+            CONF_DL100_DEVICE_ID,
+        }
+        if any(key in entry.data for key in sensitive_keys):
+            new_data = {
+                key: value
+                for key, value in entry.data.items()
+                if key not in sensitive_keys
+            }
             hass.config_entries.async_update_entry(entry, data=new_data)
 
     entry.runtime_data = coordinator
