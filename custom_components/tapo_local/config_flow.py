@@ -533,6 +533,13 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         or self._pending_dl100["model"]
                     )
 
+                    # A fresh automatically provisioned session supersedes
+                    # any legacy manual-import cache left from older releases.
+                    legacy_import = self.hass.config.path(DL100_SESSION_IMPORT)
+                    await self.hass.async_add_executor_job(
+                        _remove_session_import, legacy_import
+                    )
+
                     return self.async_create_entry(
                         title=title,
                         data={
