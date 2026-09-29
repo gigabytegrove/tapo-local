@@ -15,5 +15,5 @@
     "python-kasa[speedups]==0.10.2",
     "cryptography>=1.9"
   ],
-  "version": "0.7.1"
+  "version": "0.7.2"
 }
