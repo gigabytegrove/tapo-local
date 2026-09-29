@@ -1,19 +1,19 @@
 {
   "domain": "tapo_local",
   "name": "Tapo Local",
-  "version": "0.7.1",
-  "config_flow": true,
-  "documentation": "https://github.com/gigabytegrove/tapo-local",
-  "issue_tracker": "https://github.com/gigabytegrove/tapo-local/issues",
   "codeowners": [
     "@gigabytegrove"
   ],
+  "config_flow": true,
+  "documentation": "https://github.com/gigabytegrove/tapo-local",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/gigabytegrove/tapo-local/issues",
   "loggers": [
     "kasa"
   ],
   "requirements": [
     "python-kasa[speedups]==0.10.2",
     "cryptography>=1.9"
-  ]
+  ],
+  "version": "0.7.1"
 }
