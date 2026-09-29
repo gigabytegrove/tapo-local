@@ -80,7 +80,7 @@ After installation and restart:
 4. Enter the device IP address or hostname.
 5. Complete local authentication if the device requires it.
 
-Tapo Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
+Tapo Local does not use TP-Link cloud for normal device control. DL100 is the exception during session provisioning: its DLKLAP protocol requires a TP-Link-issued control key to establish or renew a local encrypted session. After that handshake, status and lock/unlock traffic are local.
 
 ## What Tapo Local supports
 
@@ -169,7 +169,7 @@ Runtime behavior is local:
 - persistent DLKLAP sequence handling
 - physical lock/unlock state verification
 
-Current limitation: Tapo Local does not yet provision a brand-new DL100 authorization session from scratch. An existing authorized LAN session is required for initial import.
+Tapo Local provisions DL100 sessions directly during setup using the lock owner's Tapo credentials. If the DL100 later rejects the cached session, Tapo Local automatically establishes a fresh DLKLAP session and retries the operation.
 
 ## Home Assistant entity behavior
 
@@ -191,7 +191,7 @@ Additional compatible python-kasa features flow into generic sensor, binary sens
 Tapo Local is designed around LAN device control.
 
 - Direct device IP/hostname access
-- No cloud control fallback
+- No cloud control fallback for normal device commands
 - No generic protocol guessing at runtime
 - No helper daemon or sidecar
 - No manually managed pip install
