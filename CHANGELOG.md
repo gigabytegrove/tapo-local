@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.4
+
+### DL100 local recovery
+
+- HTTP 403 now triggers a bounded, LAN-only DLKLAP sequence resynchronization sweep before Tapo Local gives up on the session.
+- Sequence probes use exponentially increasing candidates so stale sessions can catch up without thousands of requests.
+- Failed network requests and rejected sequence probes are no longer persisted as known-good state.
+- Only a response that is accepted by the lock and successfully decrypted is checkpointed.
+- No TP-Link cloud account, token, or control-key API is used by this recovery path.
+
+
 ## 0.6.3
 
 ### Changed
