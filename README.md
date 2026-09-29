@@ -177,7 +177,7 @@ Normal runtime behavior remains LAN-local:
 
 If the DL100 later rejects the cached session with HTTP 403 or the session can no longer decrypt responses, Tapo Local automatically performs the provisioning sequence again and retries the operation once. No manual session JSON import is required for normal DL100 setup or renewal.
 
-The DL100 is therefore **local-first, not cloud-independent**: routine lock control and polling are direct LAN operations, while TP-Link cloud access is required only when a new DLKLAP session must be minted.
+The DL100 does not support fully local DLKLAP session creation. You enter the owner account credentials once in Home Assistant; Tapo Local stores them privately so you are not asked again. Normal status, lock, and unlock actions are sent directly from Home Assistant to the DL100 over the LAN. If the DL100 later invalidates its session, Home Assistant may briefly use the stored credentials to renew that session automatically in the background.
 
 ## Home Assistant entity behavior
 
