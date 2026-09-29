@@ -1,4 +1,4 @@
-"""Tests for the local-only DL100 saved-session backend."""
+"""Tests for the DL100 session backend."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ class DL100SessionTests(unittest.TestCase):
 
 
 class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_sequence_is_persisted_even_on_rejected_request(self) -> None:
+    async def test_rejected_request_is_not_checkpointed_without_reauth(self) -> None:
         saver = AsyncMock()
         device = backend.DL100LocalDevice(
             "192.0.2.100",
@@ -67,9 +67,48 @@ class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(backend.DL100SessionError):
             await device.request("getLockStatus")
 
-        saver.assert_awaited_once()
-        saved = saver.await_args.args[0]
-        self.assertEqual(saved["seq"], 501)
+        saver.assert_not_awaited()
+
+    async def test_http_403_reauthenticates_and_retries(self) -> None:
+        saver = AsyncMock()
+        refresher = AsyncMock(return_value=_state(900))
+        device = backend.DL100LocalDevice(
+            "192.0.2.100",
+            session_state=_state(500),
+            session_saver=saver,
+            session_refresher=refresher,
+        )
+
+        # First session is rejected. The fresh session receives a valid
+        # encrypted response by delegating response construction to that
+        # session's own crypto primitives.
+        calls = 0
+
+        def post_sync(body, seq):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return 403, b""
+            plaintext = b'{"result":{"responses":[{"error_code":0,"result":{"lock_status":0}}]}}'
+            seq_bytes = device._session.seq.to_bytes(4, "big")
+            iv = device._session.ivb + seq_bytes
+            from cryptography.hazmat.primitives import padding
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            padder = padding.PKCS7(128).padder()
+            padded = padder.update(plaintext) + padder.finalize()
+            enc = Cipher(
+                algorithms.AES(device._session.lsk),
+                modes.CBC(iv),
+            ).encryptor()
+            ciphertext = enc.update(padded) + enc.finalize()
+            return 200, b"X" * 32 + ciphertext
+
+        device._post_sync = post_sync
+        result = await device.request("getLockStatus")
+
+        self.assertEqual(result["lock_status"], 0)
+        refresher.assert_awaited_once()
+        self.assertGreaterEqual(saver.await_count, 2)
 
 
 class DL100ControlTests(unittest.IsolatedAsyncioTestCase):
