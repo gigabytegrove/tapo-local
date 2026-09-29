@@ -26,7 +26,7 @@ HACS is the recommended installation method.
 8. Search for **Tapo Local**.
 9. Enter the local IP address or hostname of the device you want to add.
 
-If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, Tapo Local will request the TP-Link account credentials authorized for that device during initial setup. Those plaintext credentials are not retained.
+If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, Tapo Local will request the TP-Link account credentials authorized for that device during initial setup. For the DL100 specifically, the owner credentials are retained in Home Assistant private storage so Tapo Local can automatically mint a fresh DLKLAP session when the lock invalidates the old one.
 
 ### Option 2: Manual installation
 
@@ -157,11 +157,17 @@ SMART.TAPOHUB
 
 ### Tapo DL100
 
-Released python-kasa 0.10.2 does not include the DL100 DLKLAP lock protocol, so Tapo Local provides its own local backend.
+Released python-kasa 0.10.2 does not include the DL100 DLKLAP lock protocol, so Tapo Local provides its own DLKLAP backend.
 
-A previously authorized DLKLAP LAN session can be imported once. Tapo Local verifies it against the lock, transfers it into Home Assistant private storage, and removes the one-time import file.
+DL100 setup is automatic. After the lock is identified locally, Tapo Local asks for the TP-Link/Tapo **owner account** credentials and performs the complete DLKLAP session-establishment flow itself:
 
-Runtime behavior is local:
+1. TP-Link cloud login obtains the account token and account ID.
+2. Tapo Local performs local `handshake0` against the DL100.
+3. TP-Link's control-key service mints the per-session DLKLAP `controlKey`.
+4. Tapo Local completes local `handshake1` / `handshake2`.
+5. The resulting encrypted LAN session is stored privately in Home Assistant.
+
+Normal runtime behavior remains LAN-local:
 
 - getLockStatus
 - getDeviceRunningInfo
@@ -169,7 +175,9 @@ Runtime behavior is local:
 - persistent DLKLAP sequence handling
 - physical lock/unlock state verification
 
-Current limitation: Tapo Local does not yet provision a brand-new DL100 authorization session from scratch. An existing authorized LAN session is required for initial import.
+If the DL100 later rejects the cached session with HTTP 403 or the session can no longer decrypt responses, Tapo Local automatically performs the provisioning sequence again and retries the operation once. No manual session JSON import is required for normal DL100 setup or renewal.
+
+The DL100 is therefore **local-first, not cloud-independent**: routine lock control and polling are direct LAN operations, while TP-Link cloud access is required only when a new DLKLAP session must be minted.
 
 ## Home Assistant entity behavior
 
@@ -186,20 +194,20 @@ Specialized mappings are used when they provide a better HA experience:
 
 Additional compatible python-kasa features flow into generic sensor, binary sensor, switch, number, select, and button entities.
 
-## Local-only policy
+## Local-first policy
 
 Tapo Local is designed around LAN device control.
 
 - Direct device IP/hostname access
-- No cloud control fallback
+- No cloud control fallback for normal device commands
 - No generic protocol guessing at runtime
 - No helper daemon or sidecar
 - No manually managed pip install
-- Plaintext TP-Link credentials are not retained
+- Modern SMART-device plaintext credentials are not retained; DL100 owner credentials are retained only in Home Assistant private storage because DLKLAP session renewal requires them
 - Credential hashes and DL100 session material are stored privately
 - Sensitive session/authentication material is redacted from diagnostics
 
-For authenticated SMART devices, the TP-Link account credentials are used to authenticate **to the local device during setup**. The integration does not use them to perform a TP-Link cloud login.
+For authenticated SMART devices other than DL100, TP-Link account credentials are used to authenticate **to the local device during setup**. The DL100 is different: its verified DLKLAP protocol requires minimal TP-Link cloud round-trips to mint a fresh session control key. Normal DL100 polling and lock/unlock commands remain local.
 
 ## Networking
 
@@ -217,7 +225,7 @@ Firewalls must permit Home Assistant to reach the device on its required local p
 
 Tapo Local treats device authentication material as sensitive.
 
-- DL100 seeds, LMK, cookies, and sequence state live in Home Assistant private storage after import.
+- DL100 owner credentials, terminal UUID, device ID, seeds, LMK, cookies, and sequence state live in Home Assistant private storage.
 - Modern Kasa/Tapo plaintext credentials are used only for initial local verification.
 - The reusable protocol credential hash is moved into Home Assistant private storage.
 - Diagnostics redact credential hashes, cookies, keys, seeds, device IDs, MAC addresses, aliases, and location fields.
