@@ -22,8 +22,8 @@
         }
       },
       "dl100_credentials": {
-        "title": "Authorize Tapo DL100",
-        "description": "Enter the TP-Link/Tapo owner account credentials for this DL100. Tapo Local creates the DLKLAP session automatically and renews it when the lock rejects the old session. Normal status, lock, and unlock traffic stays on your LAN.",
+        "title": "DL100 session authorization required",
+        "description": "The Tapo DL100 does not provide a fully local method to create its DLKLAP session. Enter the TP-Link/Tapo owner account credentials once. Tapo Local uses them to create the required session and stores them privately in Home Assistant so you are not asked again. After setup, normal status, lock, and unlock actions are sent directly from Home Assistant to the lock over your local network. If the DL100 later invalidates its session, Home Assistant may briefly use the saved credentials to renew that session automatically in the background.",
         "data": {
           "username": "TP-Link/Tapo owner account email",
           "password": "TP-Link/Tapo owner account password"
@@ -40,7 +40,7 @@
       "unknown": "Unexpected error.",
       "invalid_auth": "The device rejected the supplied credentials.",
       "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. Tapo Local will not store the plaintext password.",
-      "dl100_auth_failed": "Tapo Local could not create a fresh DL100 session. Verify the owner account credentials, Internet access for the DLKLAP control-key exchange, and local reachability to the lock."
+      "dl100_auth_failed": "Tapo Local could not create a DL100 session. Verify the owner account credentials, Internet access for session authorization, and local reachability to the lock."
     },
     "abort": {
       "already_configured": "This device is already configured."
