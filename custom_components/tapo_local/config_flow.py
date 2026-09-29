@@ -17,6 +17,10 @@ from homeassistant.helpers.importlib import async_import_module
 
 from .const import (
     CONF_CREDENTIALS_HASH,
+    CONF_CLOUD_PASSWORD,
+    CONF_CLOUD_USERNAME,
+    CONF_DL100_DEVICE_ID,
+    CONF_TERMINAL_UUID,
     CONF_DEVICE_FAMILY,
     CONF_ENCRYPTION_TYPE,
     CONF_HTTPS,
@@ -52,6 +56,12 @@ SMART_CREDENTIALS_SCHEMA = vol.Schema(
     }
 )
 DL100_RETRY_SCHEMA = vol.Schema({})
+DL100_CREDENTIALS_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): cv.string,
+        vol.Required(CONF_PASSWORD): cv.string,
+    }
+)
 
 
 def _smart_connection_from_discovery(
@@ -235,7 +245,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "device_type": "SMART.TAPOLOCK",
                     "device_id": import_bundle["device_id"],
                 }
-                return await self.async_step_dl100_session()
+                return await self.async_step_dl100_credentials()
 
             try:
                 await async_ensure_kasa(self.hass)
@@ -285,7 +295,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "device_type": "SMART.TAPOLOCK",
                             "device_id": import_bundle["device_id"],
                         }
-                        return await self.async_step_dl100_session()
+                        return await self.async_step_dl100_credentials()
 
                     discovery = await async_targeted_tdp_discovery(host)
                     if discovery:
@@ -306,7 +316,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 "device_type": dtype,
                                 "device_id": device_id,
                             }
-                            return await self.async_step_dl100_session()
+                            return await self.async_step_dl100_credentials()
 
                         smart_connection = _smart_connection_from_discovery(
                             discovery
@@ -441,6 +451,103 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="smart_credentials",
             data_schema=SMART_CREDENTIALS_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_dl100_credentials(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Provision a fresh DL100 session and retain owner credentials privately."""
+        if self._pending_dl100 is None:
+            return self.async_abort(reason="cannot_connect")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            auth_module = await async_import_module(
+                self.hass, f"{__package__}.dl100_auth"
+            )
+            establish_session = auth_module.establish_session
+            DL100ProvisioningError = auth_module.DL100ProvisioningError
+
+            try:
+                provisioned = await self.hass.async_add_executor_job(
+                    establish_session,
+                    self._pending_dl100["host"],
+                    user_input[CONF_USERNAME],
+                    user_input[CONF_PASSWORD],
+                    device_id=self._pending_dl100.get("device_id"),
+                )
+            except DL100ProvisioningError as exc:
+                _LOGGER.warning(
+                    "DL100 automatic session provisioning failed for %s: %s",
+                    self._pending_dl100["host"],
+                    exc,
+                )
+                errors["base"] = "dl100_auth_failed"
+            except Exception:
+                _LOGGER.exception(
+                    "Unexpected DL100 automatic session provisioning failure for %s",
+                    self._pending_dl100["host"],
+                )
+                errors["base"] = "unknown"
+            else:
+                session_state = provisioned["session"]
+                dl100_module = await async_import_module(
+                    self.hass, f"{__package__}.dl100_backend"
+                )
+                DL100LocalDevice = dl100_module.DL100LocalDevice
+                DL100LocalError = dl100_module.DL100LocalError
+
+                device = DL100LocalDevice(
+                    self._pending_dl100["host"],
+                    session_state=session_state,
+                )
+                try:
+                    state = await device.get_state()
+                except DL100LocalError as exc:
+                    _LOGGER.warning(
+                        "Fresh DL100 session verification failed for %s: %s",
+                        self._pending_dl100["host"],
+                        exc,
+                    )
+                    errors["base"] = "dl100_auth_failed"
+                else:
+                    unique_id = str(
+                        provisioned.get("device_id")
+                        or self._pending_dl100.get("device_id")
+                        or self._pending_dl100["host"]
+                    )
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured(
+                        updates={CONF_HOST: self._pending_dl100["host"]}
+                    )
+
+                    sysinfo = state["sysinfo"]
+                    title = str(
+                        sysinfo.get("nickname")
+                        or sysinfo.get("device_name")
+                        or self._pending_dl100["model"]
+                    )
+
+                    return self.async_create_entry(
+                        title=title,
+                        data={
+                            CONF_HOST: self._pending_dl100["host"],
+                            "model": self._pending_dl100["model"],
+                            "device_type": self._pending_dl100["device_type"],
+                            CONF_TRANSPORT: TRANSPORT_DLKLAP,
+                            CONF_SESSION: device.export_session(),
+                            CONF_CLOUD_USERNAME: user_input[CONF_USERNAME],
+                            CONF_CLOUD_PASSWORD: user_input[CONF_PASSWORD],
+                            CONF_TERMINAL_UUID: provisioned["terminal_uuid"],
+                            CONF_DL100_DEVICE_ID: provisioned["device_id"],
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="dl100_credentials",
+            data_schema=DL100_CREDENTIALS_SCHEMA,
             errors=errors,
         )
 
