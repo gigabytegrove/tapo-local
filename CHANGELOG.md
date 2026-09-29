@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+### DL100 reliability overhaul
+
+- Added native DLKLAP session provisioning for Tapo DL100.
+- DL100 setup now accepts the owner Tapo account credentials and creates a fresh authorized session automatically.
+- Owner credentials, terminal UUID, device ID, and session material are moved into Home Assistant private storage after setup.
+- HTTP 403 and DLKLAP decryption/session failures automatically trigger one serialized fresh-session reauthentication and retry.
+- Normal lock/unlock and status requests remain local after the session handshake completes.
+- Removed the requirement to manually maintain a session-import JSON file for normal DL100 setup.
+- Changed sequence persistence so an uncertain transport failure is not checkpointed as a known-good sequence state.
+
+
 ## 0.5.5
 
 ### Fixed
