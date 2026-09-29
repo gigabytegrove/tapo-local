@@ -20,14 +20,6 @@
           "username": "TP-Link account email",
           "password": "TP-Link account password"
         }
-      },
-      "dl100_credentials": {
-        "title": "Authorize Tapo DL100",
-        "description": "Enter the TP-Link/Tapo owner account credentials for this DL100. Tapo Local uses them to establish and automatically renew the DLKLAP session when the lock rejects an expired or stale session. Lock/unlock and status traffic remain local after session establishment.",
-        "data": {
-          "username": "TP-Link/Tapo owner account email",
-          "password": "TP-Link/Tapo owner account password"
-        }
       }
     },
     "error": {
@@ -39,8 +31,7 @@
       "unsupported_device": "The device responded locally, but its device family or Home Assistant platform is not supported by this Tapo Local build.",
       "unknown": "Unexpected error.",
       "invalid_auth": "The device rejected the supplied credentials.",
-      "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. Tapo Local will not store the plaintext password.",
-      "dl100_auth_failed": "Tapo Local could not establish a fresh authorized DL100 session. Verify that these are the owner account credentials and that Home Assistant has Internet access for session provisioning."
+      "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. Tapo Local will not store the plaintext password."
     },
     "abort": {
       "already_configured": "This device is already configured."
