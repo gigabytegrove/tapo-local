@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -472,11 +473,13 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 provisioned = await self.hass.async_add_executor_job(
-                    establish_session,
-                    self._pending_dl100["host"],
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                    device_id=self._pending_dl100.get("device_id"),
+                    partial(
+                        establish_session,
+                        self._pending_dl100["host"],
+                        user_input[CONF_USERNAME],
+                        user_input[CONF_PASSWORD],
+                        device_id=self._pending_dl100.get("device_id"),
+                    )
                 )
             except DL100ProvisioningError as exc:
                 _LOGGER.warning(
