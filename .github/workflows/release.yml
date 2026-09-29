@@ -1,23 +1,27 @@
 name: Publish Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Validate
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - custom_components/tapo_local/manifest.json
-      - .github/workflows/release.yml
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Check out validated commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Read integration version
         id: version
@@ -38,6 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          VALIDATED_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -47,7 +52,4 @@ jobs:
             exit 0
           fi
 
-          gh release create "$VERSION" \
-            --target "$GITHUB_SHA" \
-            --title "$VERSION" \
-            --generate-notes
+          gh release create "$VERSION"             --target "$VALIDATED_SHA"             --title "$VERSION"             --generate-notes
