@@ -11,7 +11,7 @@
       },
       "dl100_session": {
         "title": "Import DL100 local session",
-        "description": "DL100 was identified locally. Tapo Local requires the already-authorized local DLKLAP session import at {path}. Copy the saved session cache there, then select Submit to verify it locally. No TP-Link cloud login or handshake0 is performed by this integration."
+        "description": "DL100 was identified locally. Tapo Local will first try to recover and verify any previously saved local DLKLAP session from an earlier installation. If no reusable session exists, place an authorized session import at {path}, then select Submit."
       },
       "smart_credentials": {
         "title": "Local device authentication",
@@ -25,9 +25,9 @@
     "error": {
       "cannot_connect": "Unable to connect to the device using its forced local protocol.",
       "dependency_unavailable": "Tapo Local could not prepare its required local-control runtime. No device commands were attempted. Check Settings > System > Repairs and the Home Assistant log for the exact dependency error.",
-      "dl100_session_missing": "The DL100 local-session import file is not present yet. Copy the authorized session cache to the path shown above, then try again.",
+      "dl100_session_missing": "No reusable Tapo Local DL100 session was found. Place an authorized local-session import at the path shown above, then try again.",
       "dl100_session_invalid": "The DL100 session import file exists but does not contain a valid saved DLKLAP session.",
-      "dl100_session_rejected": "The DL100 rejected the saved local session. A current authorized LAN session is required before the device can be added.",
+      "dl100_session_rejected": "Previously saved or imported DL100 sessions were found but none were accepted by this lock. A current authorized LAN session is required.",
       "unsupported_device": "The device responded locally, but its device family or Home Assistant platform is not supported by this Tapo Local build.",
       "unknown": "Unexpected error.",
       "invalid_auth": "The device rejected the supplied credentials.",

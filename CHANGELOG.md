@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.5
+
+### Fixed
+
+- Re-adding a previously configured DL100 now automatically searches Tapo Local's orphaned private Home Assistant session stores.
+- Each recovered DLKLAP session is cryptographically verified against the supplied lock before reuse.
+- A verified orphaned session is migrated into the new config entry and the obsolete private store is removed.
+- Manual `tapo_local_dl100_session_import.json` is now only required when no reusable prior Tapo Local session exists.
+
+
 ## 0.5.4
 
 ### Fixed
