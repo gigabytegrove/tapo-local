@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+
+### UI clarification
+
+- Clarified that the Tapo DL100 does not provide a fully local method to create its DLKLAP session.
+- The setup UI now explains that the owner account credentials are entered once and stored privately in Home Assistant so the user is not prompted again.
+- The UI now explicitly states that normal status, lock, and unlock actions are sent directly from Home Assistant to the lock over the local network.
+- The UI also explains that Home Assistant may briefly use the stored credentials in the background if the DL100 later invalidates its session and a fresh session must be created.
+
+
 ## 0.7.0
 
 ### DL100 automatic session provisioning
