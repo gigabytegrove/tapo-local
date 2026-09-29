@@ -12,10 +12,6 @@ CONF_LOGIN_VERSION = "login_version"
 CONF_HTTPS = "https"
 CONF_HTTP_PORT = "http_port"
 CONF_CREDENTIALS_HASH = "credentials_hash"
-CONF_CLOUD_USERNAME = "cloud_username"
-CONF_CLOUD_PASSWORD = "cloud_password"
-CONF_TERMINAL_UUID = "terminal_uuid"
-CONF_DL100_DEVICE_ID = "dl100_device_id"
 
 TRANSPORT_XOR = "xor"
 TRANSPORT_SMART = "smart"
@@ -61,5 +57,5 @@ SUPPORTED_SMART_DEVICE_TYPES = {
 PIR_MODULE = "smartlife.iot.PIR"
 
 DL100_SESSION_IMPORT = ".storage/tapo_local_dl100_session_import.json"
-DL100_SESSION_STORE_VERSION = 2
+DL100_SESSION_STORE_VERSION = 1
 KASA_CREDENTIAL_STORE_VERSION = 1
