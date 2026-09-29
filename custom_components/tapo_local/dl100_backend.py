@@ -168,7 +168,6 @@ def extract_session_state(value: dict[str, Any]) -> dict[str, Any]:
 
 
 SessionSaver = Callable[[dict[str, Any]], Awaitable[None]]
-SessionRefresher = Callable[[], Awaitable[dict[str, Any]]]
 
 
 class DL100LocalDevice:
@@ -180,14 +179,12 @@ class DL100LocalDevice:
         *,
         session_state: dict[str, Any],
         session_saver: SessionSaver | None = None,
-        session_refresher: SessionRefresher | None = None,
         timeout: float = 5.0,
     ) -> None:
         self.host = host
         self.timeout = timeout
         self._session = DL100LocalSession.from_state(session_state)
         self._session_saver = session_saver
-        self._session_refresher = session_refresher
         self._request_lock = asyncio.Lock()
 
     def export_session(self) -> dict[str, Any]:
@@ -221,108 +218,73 @@ class DL100LocalDevice:
         finally:
             connection.close()
 
-    async def _refresh_session(self, reason: str) -> None:
-        if self._session_refresher is None:
-            raise DL100SessionError(reason)
-        _LOGGER.warning(
-            "DL100 %s session rejected; establishing a fresh DLKLAP session",
-            self.host,
-        )
-        try:
-            state = await self._session_refresher()
-            self._session = DL100LocalSession.from_state(state)
-            await self._persist_session()
-        except Exception as exc:
-            raise DL100SessionError(
-                f"{reason}; automatic reauthentication failed: {exc}"
-            ) from exc
-        _LOGGER.info("DL100 %s automatic DLKLAP reauthentication succeeded", self.host)
-
     async def request(
         self,
         method: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Run an encrypted request, automatically reauthenticating once if needed."""
+        """Run one encrypted local request and persist the advanced sequence."""
         async with self._request_lock:
-            for attempt in range(2):
-                request: dict[str, Any] = {"method": method}
-                if params is not None:
-                    request["params"] = params
+            request: dict[str, Any] = {"method": method}
+            if params is not None:
+                request["params"] = params
 
-                envelope = {
-                    "method": "multipleRequest",
-                    "params": {"requests": [request]},
-                }
-                body, seq = self._session.encrypt(envelope)
+            envelope = {
+                "method": "multipleRequest",
+                "params": {"requests": [request]},
+            }
+            body, seq = self._session.encrypt(envelope)
 
-                try:
-                    status, raw = await asyncio.to_thread(self._post_sync, body, seq)
-                except (OSError, TimeoutError) as exc:
-                    # The sequence is uncertain after a transport failure. Keep the
-                    # in-memory increment, but do not checkpoint it until a response
-                    # is successfully received.
-                    raise DL100ConnectionError(
-                        f"Unable to reach DL100 {self.host}:80: {exc}"
-                    ) from exc
-
-                if status == 403:
-                    if attempt == 0 and self._session_refresher is not None:
-                        await self._refresh_session(
-                            "DL100 rejected the saved local session (HTTP 403)"
-                        )
-                        continue
-                    raise DL100SessionError(
-                        "DL100 rejected the saved local session (HTTP 403)"
-                    )
-                if status != 200:
-                    raise DL100ConnectionError(
-                        f"DL100 returned HTTP {status} for {method}"
-                    )
-
-                try:
-                    decoded = self._session.decrypt(raw)
-                except DL100SessionError as exc:
-                    if attempt == 0 and self._session_refresher is not None:
-                        await self._refresh_session(str(exc))
-                        continue
-                    raise
-
-                # Only checkpoint sequence state after a valid response. If the
-                # request outcome was unknown, the next hard session failure will
-                # establish a fresh DLKLAP session rather than restoring a guessed seq.
+            try:
+                status, raw = await asyncio.to_thread(self._post_sync, body, seq)
+            except (OSError, TimeoutError) as exc:
+                raise DL100ConnectionError(
+                    f"Unable to reach DL100 {self.host}:80: {exc}"
+                ) from exc
+            finally:
+                # The sequence has advanced whether or not the response was
+                # usable. Persist it so a restart never intentionally restores
+                # the older sequence used before this request attempt.
                 await self._persist_session()
 
-                result = decoded.get("result")
-                responses = result.get("responses") if isinstance(result, dict) else None
-                if not isinstance(responses, list) or not responses:
-                    raise DL100SessionError(
-                        f"DL100 {method} response had no nested response"
-                    )
+            if status == 403:
+                raise DL100SessionError(
+                    "DL100 rejected the saved local session (HTTP 403)"
+                )
+            if status != 200:
+                raise DL100ConnectionError(
+                    f"DL100 returned HTTP {status} for {method}"
+                )
 
-                item = responses[0]
-                if not isinstance(item, dict):
-                    raise DL100SessionError(
-                        f"DL100 {method} returned an invalid nested response"
-                    )
-                if item.get("error_code", 0) != 0:
-                    raise DL100LocalError(
-                        f"DL100 {method} returned error_code {item.get('error_code')}"
-                    )
+            decoded = self._session.decrypt(raw)
+            result = decoded.get("result")
+            responses = result.get("responses") if isinstance(result, dict) else None
+            if not isinstance(responses, list) or not responses:
+                raise DL100SessionError(
+                    f"DL100 {method} response had no nested response"
+                )
 
-                nested = item.get("result")
-                result_dict = nested if isinstance(nested, dict) else {}
+            item = responses[0]
+            if not isinstance(item, dict):
+                raise DL100SessionError(
+                    f"DL100 {method} returned an invalid nested response"
+                )
+            if item.get("error_code", 0) != 0:
+                raise DL100LocalError(
+                    f"DL100 {method} returned error_code {item.get('error_code')}"
+                )
 
-                if method == "setLockStatus":
-                    _LOGGER.info(
-                        "DL100 setLockStatus acknowledged by %s at sequence %s",
-                        self.host,
-                        self._session.seq,
-                    )
+            nested = item.get("result")
+            result_dict = nested if isinstance(nested, dict) else {}
 
-                return result_dict
+            if method == "setLockStatus":
+                _LOGGER.info(
+                    "DL100 setLockStatus acknowledged by %s at sequence %s",
+                    self.host,
+                    self._session.seq,
+                )
 
-            raise DL100SessionError("DL100 session retry exhausted")
+            return result_dict
 
     @staticmethod
     def _merge_result(target: dict[str, Any], result: dict[str, Any]) -> None:
