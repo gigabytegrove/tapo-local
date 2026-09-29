@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+### DL100 automatic session provisioning
+
+- Replaced the manual-session workflow with automatic DLKLAP provisioning for normal DL100 setup.
+- DL100 setup now asks once for the TP-Link/Tapo owner account credentials and creates the authorized session itself.
+- Owner credentials, device ID, terminal UUID, and DLKLAP session material are moved into Home Assistant private storage.
+- HTTP 403 or an unusable encrypted session automatically triggers one serialized fresh-session provisioning attempt and retries the original operation.
+- Normal DL100 status, lock, and unlock traffic remains direct LAN traffic.
+- TP-Link cloud access is used only to obtain the token/account information and per-session control key required by the verified DLKLAP protocol.
+- A successful fresh setup deletes any legacy manual session-import file left by older releases.
+
+
 ## 0.6.4
 
 ### DL100 local recovery
