@@ -145,6 +145,49 @@ def _remove_session_import(path: str) -> None:
     Path(path).unlink(missing_ok=True)
 
 
+def _find_saved_dl100_sessions(config_dir: str) -> list[dict[str, Any]]:
+    """Find orphaned Tapo Local DL100 private session stores.
+
+    Removing a Home Assistant config entry does not necessarily remove the
+    integration's private Store file. Re-add flows can therefore recover the
+    previously authorized DLKLAP session instead of forcing a manual import.
+    """
+    storage_dir = Path(config_dir) / ".storage"
+    candidates: list[dict[str, Any]] = []
+    required = {"local_seed", "remote_seed", "lmk", "seq", "cookie"}
+
+    for path in sorted(storage_dir.glob(f"{DOMAIN}.dl100_session.*")):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+
+        # Home Assistant Store files wrap the integration payload in "data".
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            data = payload
+
+        session = data.get("session") if isinstance(data, dict) else None
+        if not isinstance(session, dict) or not required.issubset(session):
+            continue
+
+        candidates.append(
+            {
+                "path": str(path),
+                "session": session,
+            }
+        )
+
+    return candidates
+
+
+def _remove_saved_session(path: str) -> None:
+    """Remove a verified orphaned private session store after migration."""
+    Path(path).unlink(missing_ok=True)
+
+
 class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a TP-Link Local config flow."""
 
@@ -412,83 +455,133 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         import_path = self.hass.config.path(DL100_SESSION_IMPORT)
         errors: dict[str, str] = {}
 
+        dl100_module = await async_import_module(
+            self.hass, f"{__package__}.dl100_backend"
+        )
+        DL100LocalDevice = dl100_module.DL100LocalDevice
+        DL100LocalError = dl100_module.DL100LocalError
+
+        # Prefer the explicit one-time import when present. If it is absent,
+        # recover any orphaned private session stores left by an earlier Tapo
+        # Local config entry and verify them cryptographically against this lock.
+        candidates: list[dict[str, Any]] = []
+        import_bundle: dict[str, Any] | None = None
         try:
             import_bundle = await self.hass.async_add_executor_job(
                 _read_session_import, import_path
             )
-            session_state = import_bundle["session"]
         except FileNotFoundError:
-            errors["base"] = "dl100_session_missing"
+            saved = await self.hass.async_add_executor_job(
+                _find_saved_dl100_sessions,
+                self.hass.config.config_dir,
+            )
+            candidates.extend(
+                {
+                    "source": "saved",
+                    "path": item["path"],
+                    "session": item["session"],
+                }
+                for item in saved
+            )
         except Exception:
             errors["base"] = "dl100_session_invalid"
         else:
-            dl100_module = await async_import_module(
-                self.hass, f"{__package__}.dl100_backend"
+            candidates.append(
+                {
+                    "source": "import",
+                    "path": import_path,
+                    "session": import_bundle["session"],
+                }
             )
-            DL100LocalDevice = dl100_module.DL100LocalDevice
-            DL100LocalError = dl100_module.DL100LocalError
 
-            async def _save_import_session(state: dict[str, Any]) -> None:
-                await self.hass.async_add_executor_job(
-                    _write_session_import,
-                    import_path,
-                    state,
-                    import_bundle,
-                )
+        if not errors and not candidates:
+            errors["base"] = "dl100_session_missing"
+
+        last_error: Exception | None = None
+        for candidate in candidates:
+            async def _save_candidate_session(
+                state: dict[str, Any],
+                *,
+                _candidate: dict[str, Any] = candidate,
+            ) -> None:
+                if _candidate["source"] == "import" and import_bundle is not None:
+                    await self.hass.async_add_executor_job(
+                        _write_session_import,
+                        import_path,
+                        state,
+                        import_bundle,
+                    )
 
             device = DL100LocalDevice(
                 self._pending_dl100["host"],
-                session_state=session_state,
-                session_saver=_save_import_session,
+                session_state=candidate["session"],
+                session_saver=_save_candidate_session,
             )
             try:
                 state = await device.get_state()
             except DL100LocalError as exc:
-                _LOGGER.warning(
-                    "DL100 local-session verification failed for %s: %s",
+                last_error = exc
+                _LOGGER.debug(
+                    "DL100 saved-session candidate %s did not verify for %s: %s",
+                    candidate["path"],
                     self._pending_dl100["host"],
                     exc,
                 )
-                errors["base"] = "dl100_session_rejected"
-            except Exception:
+                continue
+            except Exception as exc:
+                last_error = exc
                 _LOGGER.exception(
                     "Unexpected DL100 local-session verification failure for %s",
                     self._pending_dl100["host"],
                 )
-                errors["base"] = "unknown"
-            else:
-                _LOGGER.info(
-                    "DL100 local-session verification succeeded for %s",
-                    self._pending_dl100["host"],
-                )
-                latest_session = device.export_session()
-                unique_id = self._pending_dl100["device_id"]
-                await self.async_set_unique_id(unique_id)
-                self._abort_if_unique_id_configured(
-                    updates={CONF_HOST: self._pending_dl100["host"]}
-                )
+                continue
 
-                sysinfo = state["sysinfo"]
-                title = str(
-                    sysinfo.get("nickname")
-                    or sysinfo.get("device_name")
-                    or self._pending_dl100["model"]
-                )
+            _LOGGER.info(
+                "DL100 local-session verification succeeded for %s using %s",
+                self._pending_dl100["host"],
+                candidate["source"],
+            )
+            latest_session = device.export_session()
+            unique_id = self._pending_dl100["device_id"]
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured(
+                updates={CONF_HOST: self._pending_dl100["host"]}
+            )
 
+            sysinfo = state["sysinfo"]
+            title = str(
+                sysinfo.get("nickname")
+                or sysinfo.get("device_name")
+                or self._pending_dl100["model"]
+            )
+
+            if candidate["source"] == "import":
                 await self.hass.async_add_executor_job(
                     _remove_session_import, import_path
                 )
-
-                return self.async_create_entry(
-                    title=title,
-                    data={
-                        CONF_HOST: self._pending_dl100["host"],
-                        "model": self._pending_dl100["model"],
-                        "device_type": self._pending_dl100["device_type"],
-                        CONF_TRANSPORT: TRANSPORT_DLKLAP,
-                        CONF_SESSION: latest_session,
-                    },
+            else:
+                await self.hass.async_add_executor_job(
+                    _remove_saved_session, candidate["path"]
                 )
+
+            return self.async_create_entry(
+                title=title,
+                data={
+                    CONF_HOST: self._pending_dl100["host"],
+                    "model": self._pending_dl100["model"],
+                    "device_type": self._pending_dl100["device_type"],
+                    CONF_TRANSPORT: TRANSPORT_DLKLAP,
+                    CONF_SESSION: latest_session,
+                },
+            )
+
+        if candidates and not errors:
+            _LOGGER.warning(
+                "No saved DL100 local session verified for %s: %s",
+                self._pending_dl100["host"],
+                last_error,
+            )
+            errors["base"] = "dl100_session_rejected"
 
         return self.async_show_form(
             step_id="dl100_session",
