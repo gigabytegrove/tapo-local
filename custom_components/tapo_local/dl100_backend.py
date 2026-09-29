@@ -168,6 +168,7 @@ def extract_session_state(value: dict[str, Any]) -> dict[str, Any]:
 
 
 SessionSaver = Callable[[dict[str, Any]], Awaitable[None]]
+SessionRefresher = Callable[[], Awaitable[dict[str, Any]]]
 
 
 class DL100LocalDevice:
@@ -179,12 +180,14 @@ class DL100LocalDevice:
         *,
         session_state: dict[str, Any],
         session_saver: SessionSaver | None = None,
+        session_refresher: SessionRefresher | None = None,
         timeout: float = 5.0,
     ) -> None:
         self.host = host
         self.timeout = timeout
         self._session = DL100LocalSession.from_state(session_state)
         self._session_saver = session_saver
+        self._session_refresher = session_refresher
         self._request_lock = asyncio.Lock()
 
     def export_session(self) -> dict[str, Any]:
@@ -218,152 +221,108 @@ class DL100LocalDevice:
         finally:
             connection.close()
 
-    def _build_request_body(
-        self,
-        envelope: dict[str, Any],
-        seq: int,
-    ) -> bytes:
-        """Encrypt one request at an explicit sequence number."""
-        self._session.seq = seq
-        seq_bytes = seq.to_bytes(4, "big")
-        iv = self._session.ivb + seq_bytes
-        plaintext = json.dumps(envelope, separators=(",", ":")).encode()
-        encryptor = Cipher(
-            algorithms.AES(self._session.lsk),
-            modes.CBC(iv),
-        ).encryptor()
-        ciphertext = encryptor.update(_pad(plaintext)) + encryptor.finalize()
-        mac = _sha256(self._session.ldk, seq_bytes, ciphertext)
-        return mac + ciphertext
-
-    async def _try_sequence(
-        self,
-        envelope: dict[str, Any],
-        seq: int,
-    ) -> tuple[int, bytes]:
-        body = self._build_request_body(envelope, seq)
+    async def _refresh_session(self, reason: str) -> None:
+        if self._session_refresher is None:
+            raise DL100SessionError(reason)
+        _LOGGER.warning(
+            "DL100 %s session rejected; establishing a fresh DLKLAP session",
+            self.host,
+        )
         try:
-            return await asyncio.to_thread(self._post_sync, body, seq)
-        except (OSError, TimeoutError) as exc:
-            raise DL100ConnectionError(
-                f"Unable to reach DL100 {self.host}:80: {exc}"
+            state = await self._session_refresher()
+            self._session = DL100LocalSession.from_state(state)
+            await self._persist_session()
+        except Exception as exc:
+            raise DL100SessionError(
+                f"{reason}; automatic reauthentication failed: {exc}"
             ) from exc
-
-    async def _recover_sequence(
-        self,
-        envelope: dict[str, Any],
-        rejected_seq: int,
-    ) -> tuple[int, bytes] | None:
-        """Recover a locally authorized session whose sequence fell behind.
-
-        DLKLAP rejects replayed/stale sequence values with HTTP 403. Probe a
-        bounded set of monotonically higher sequence values without involving
-        TP-Link cloud services. Only an accepted response is persisted.
-        """
-        # Exponential jumps cover short transient drift as well as many hours
-        # of polling without hammering the lock with thousands of requests.
-        for delta in (2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536):
-            candidate = rejected_seq - 1 + delta
-            _LOGGER.warning(
-                "DL100 %s rejected sequence %s; trying local sequence recovery at %s",
-                self.host,
-                rejected_seq,
-                candidate,
-            )
-            status, raw = await self._try_sequence(envelope, candidate)
-            if status == 200:
-                try:
-                    self._session.decrypt(raw)
-                except DL100SessionError:
-                    continue
-                _LOGGER.info(
-                    "DL100 %s local sequence recovery succeeded at sequence %s",
-                    self.host,
-                    candidate,
-                )
-                return candidate, raw
-            if status != 403:
-                raise DL100ConnectionError(
-                    f"DL100 returned HTTP {status} during sequence recovery"
-                )
-
-        # Restore the last rejected value in memory. Nothing from the failed
-        # recovery sweep is checkpointed as known-good state.
-        self._session.seq = rejected_seq
-        return None
+        _LOGGER.info("DL100 %s automatic DLKLAP reauthentication succeeded", self.host)
 
     async def request(
         self,
         method: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Run one local encrypted request with bounded sequence self-recovery."""
+        """Run an encrypted request, automatically reauthenticating once if needed."""
         async with self._request_lock:
-            request: dict[str, Any] = {"method": method}
-            if params is not None:
-                request["params"] = params
+            for attempt in range(2):
+                request: dict[str, Any] = {"method": method}
+                if params is not None:
+                    request["params"] = params
 
-            envelope = {
-                "method": "multipleRequest",
-                "params": {"requests": [request]},
-            }
+                envelope = {
+                    "method": "multipleRequest",
+                    "params": {"requests": [request]},
+                }
+                body, seq = self._session.encrypt(envelope)
 
-            attempted_seq = self._session.seq + 1
-            status, raw = await self._try_sequence(envelope, attempted_seq)
+                try:
+                    status, raw = await asyncio.to_thread(self._post_sync, body, seq)
+                except (OSError, TimeoutError) as exc:
+                    # The sequence is uncertain after a transport failure. Keep the
+                    # in-memory increment, but do not checkpoint it until a response
+                    # is successfully received.
+                    raise DL100ConnectionError(
+                        f"Unable to reach DL100 {self.host}:80: {exc}"
+                    ) from exc
 
-            if status == 403:
-                recovered = await self._recover_sequence(envelope, attempted_seq)
-                if recovered is None:
+                if status == 403:
+                    if attempt == 0 and self._session_refresher is not None:
+                        await self._refresh_session(
+                            "DL100 rejected the saved local session (HTTP 403)"
+                        )
+                        continue
                     raise DL100SessionError(
-                        "DL100 rejected the local session after bounded sequence recovery (HTTP 403)"
+                        "DL100 rejected the saved local session (HTTP 403)"
                     )
-                attempted_seq, raw = recovered
-                status = 200
+                if status != 200:
+                    raise DL100ConnectionError(
+                        f"DL100 returned HTTP {status} for {method}"
+                    )
 
-            if status != 200:
-                raise DL100ConnectionError(
-                    f"DL100 returned HTTP {status} for {method}"
-                )
+                try:
+                    decoded = self._session.decrypt(raw)
+                except DL100SessionError as exc:
+                    if attempt == 0 and self._session_refresher is not None:
+                        await self._refresh_session(str(exc))
+                        continue
+                    raise
 
-            # _recover_sequence validates a successful recovery response once,
-            # but decrypt again here so all successful requests take the same
-            # parsing path. Reset seq explicitly because decrypt uses it.
-            self._session.seq = attempted_seq
-            decoded = self._session.decrypt(raw)
+                # Only checkpoint sequence state after a valid response. If the
+                # request outcome was unknown, the next hard session failure will
+                # establish a fresh DLKLAP session rather than restoring a guessed seq.
+                await self._persist_session()
 
-            # Persist only after the lock accepted and we decrypted the response.
-            # Failed network requests and 403 probes are never checkpointed as
-            # known-good sequence state.
-            await self._persist_session()
+                result = decoded.get("result")
+                responses = result.get("responses") if isinstance(result, dict) else None
+                if not isinstance(responses, list) or not responses:
+                    raise DL100SessionError(
+                        f"DL100 {method} response had no nested response"
+                    )
 
-            result = decoded.get("result")
-            responses = result.get("responses") if isinstance(result, dict) else None
-            if not isinstance(responses, list) or not responses:
-                raise DL100SessionError(
-                    f"DL100 {method} response had no nested response"
-                )
+                item = responses[0]
+                if not isinstance(item, dict):
+                    raise DL100SessionError(
+                        f"DL100 {method} returned an invalid nested response"
+                    )
+                if item.get("error_code", 0) != 0:
+                    raise DL100LocalError(
+                        f"DL100 {method} returned error_code {item.get('error_code')}"
+                    )
 
-            item = responses[0]
-            if not isinstance(item, dict):
-                raise DL100SessionError(
-                    f"DL100 {method} returned an invalid nested response"
-                )
-            if item.get("error_code", 0) != 0:
-                raise DL100LocalError(
-                    f"DL100 {method} returned error_code {item.get('error_code')}"
-                )
+                nested = item.get("result")
+                result_dict = nested if isinstance(nested, dict) else {}
 
-            nested = item.get("result")
-            result_dict = nested if isinstance(nested, dict) else {}
+                if method == "setLockStatus":
+                    _LOGGER.info(
+                        "DL100 setLockStatus acknowledged by %s at sequence %s",
+                        self.host,
+                        self._session.seq,
+                    )
 
-            if method == "setLockStatus":
-                _LOGGER.info(
-                    "DL100 setLockStatus acknowledged by %s at sequence %s",
-                    self.host,
-                    self._session.seq,
-                )
+                return result_dict
 
-            return result_dict
+            raise DL100SessionError("DL100 session retry exhausted")
 
     @staticmethod
     def _merge_result(target: dict[str, Any], result: dict[str, Any]) -> None:
