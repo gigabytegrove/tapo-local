@@ -218,12 +218,86 @@ class DL100LocalDevice:
         finally:
             connection.close()
 
+    def _build_request_body(
+        self,
+        envelope: dict[str, Any],
+        seq: int,
+    ) -> bytes:
+        """Encrypt one request at an explicit sequence number."""
+        self._session.seq = seq
+        seq_bytes = seq.to_bytes(4, "big")
+        iv = self._session.ivb + seq_bytes
+        plaintext = json.dumps(envelope, separators=(",", ":")).encode()
+        encryptor = Cipher(
+            algorithms.AES(self._session.lsk),
+            modes.CBC(iv),
+        ).encryptor()
+        ciphertext = encryptor.update(_pad(plaintext)) + encryptor.finalize()
+        mac = _sha256(self._session.ldk, seq_bytes, ciphertext)
+        return mac + ciphertext
+
+    async def _try_sequence(
+        self,
+        envelope: dict[str, Any],
+        seq: int,
+    ) -> tuple[int, bytes]:
+        body = self._build_request_body(envelope, seq)
+        try:
+            return await asyncio.to_thread(self._post_sync, body, seq)
+        except (OSError, TimeoutError) as exc:
+            raise DL100ConnectionError(
+                f"Unable to reach DL100 {self.host}:80: {exc}"
+            ) from exc
+
+    async def _recover_sequence(
+        self,
+        envelope: dict[str, Any],
+        rejected_seq: int,
+    ) -> tuple[int, bytes] | None:
+        """Recover a locally authorized session whose sequence fell behind.
+
+        DLKLAP rejects replayed/stale sequence values with HTTP 403. Probe a
+        bounded set of monotonically higher sequence values without involving
+        TP-Link cloud services. Only an accepted response is persisted.
+        """
+        # Exponential jumps cover short transient drift as well as many hours
+        # of polling without hammering the lock with thousands of requests.
+        for delta in (2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536):
+            candidate = rejected_seq - 1 + delta
+            _LOGGER.warning(
+                "DL100 %s rejected sequence %s; trying local sequence recovery at %s",
+                self.host,
+                rejected_seq,
+                candidate,
+            )
+            status, raw = await self._try_sequence(envelope, candidate)
+            if status == 200:
+                try:
+                    self._session.decrypt(raw)
+                except DL100SessionError:
+                    continue
+                _LOGGER.info(
+                    "DL100 %s local sequence recovery succeeded at sequence %s",
+                    self.host,
+                    candidate,
+                )
+                return candidate, raw
+            if status != 403:
+                raise DL100ConnectionError(
+                    f"DL100 returned HTTP {status} during sequence recovery"
+                )
+
+        # Restore the last rejected value in memory. Nothing from the failed
+        # recovery sweep is checkpointed as known-good state.
+        self._session.seq = rejected_seq
+        return None
+
     async def request(
         self,
         method: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Run one encrypted local request and persist the advanced sequence."""
+        """Run one local encrypted request with bounded sequence self-recovery."""
         async with self._request_lock:
             request: dict[str, Any] = {"method": method}
             if params is not None:
@@ -233,30 +307,35 @@ class DL100LocalDevice:
                 "method": "multipleRequest",
                 "params": {"requests": [request]},
             }
-            body, seq = self._session.encrypt(envelope)
 
-            try:
-                status, raw = await asyncio.to_thread(self._post_sync, body, seq)
-            except (OSError, TimeoutError) as exc:
-                raise DL100ConnectionError(
-                    f"Unable to reach DL100 {self.host}:80: {exc}"
-                ) from exc
-            finally:
-                # The sequence has advanced whether or not the response was
-                # usable. Persist it so a restart never intentionally restores
-                # the older sequence used before this request attempt.
-                await self._persist_session()
+            attempted_seq = self._session.seq + 1
+            status, raw = await self._try_sequence(envelope, attempted_seq)
 
             if status == 403:
-                raise DL100SessionError(
-                    "DL100 rejected the saved local session (HTTP 403)"
-                )
+                recovered = await self._recover_sequence(envelope, attempted_seq)
+                if recovered is None:
+                    raise DL100SessionError(
+                        "DL100 rejected the local session after bounded sequence recovery (HTTP 403)"
+                    )
+                attempted_seq, raw = recovered
+                status = 200
+
             if status != 200:
                 raise DL100ConnectionError(
                     f"DL100 returned HTTP {status} for {method}"
                 )
 
+            # _recover_sequence validates a successful recovery response once,
+            # but decrypt again here so all successful requests take the same
+            # parsing path. Reset seq explicitly because decrypt uses it.
+            self._session.seq = attempted_seq
             decoded = self._session.decrypt(raw)
+
+            # Persist only after the lock accepted and we decrypted the response.
+            # Failed network requests and 403 probes are never checkpointed as
+            # known-good sequence state.
+            await self._persist_session()
+
             result = decoded.get("result")
             responses = result.get("responses") if isinstance(result, dict) else None
             if not isinstance(responses, list) or not responses:
