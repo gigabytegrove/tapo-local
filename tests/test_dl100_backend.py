@@ -55,7 +55,7 @@ class DL100SessionTests(unittest.TestCase):
 
 
 class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_sequence_is_persisted_even_on_rejected_request(self) -> None:
+    async def test_rejected_sequence_is_not_persisted(self) -> None:
         saver = AsyncMock()
         device = backend.DL100LocalDevice(
             "192.0.2.100",
@@ -67,9 +67,47 @@ class DL100PersistenceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(backend.DL100SessionError):
             await device.request("getLockStatus")
 
+        saver.assert_not_awaited()
+        self.assertEqual(device.export_session()["seq"], 501)
+
+    async def test_sequence_recovery_jumps_forward_locally(self) -> None:
+        saver = AsyncMock()
+        device = backend.DL100LocalDevice(
+            "192.0.2.100",
+            session_state=_state(500),
+            session_saver=saver,
+        )
+
+        accepted_seq = 564
+
+        def encrypted_response(seq: int) -> bytes:
+            payload = (
+                b'{"result":{"responses":[{"error_code":0,'
+                b'"result":{"lock_status":0}}]}}'
+            )
+            seq_bytes = seq.to_bytes(4, "big")
+            iv = device._session.ivb + seq_bytes
+            padder = backend.padding.PKCS7(128).padder()
+            padded = padder.update(payload) + padder.finalize()
+            encryptor = backend.Cipher(
+                backend.algorithms.AES(device._session.lsk),
+                backend.modes.CBC(iv),
+            ).encryptor()
+            ciphertext = encryptor.update(padded) + encryptor.finalize()
+            return b"M" * 32 + ciphertext
+
+        def post_sync(body, seq):
+            if seq < accepted_seq:
+                return 403, b""
+            return 200, encrypted_response(seq)
+
+        device._post_sync = post_sync
+        result = await device.request("getLockStatus")
+
+        self.assertEqual(result["lock_status"], 0)
+        self.assertEqual(device.export_session()["seq"], accepted_seq)
         saver.assert_awaited_once()
-        saved = saver.await_args.args[0]
-        self.assertEqual(saved["seq"], 501)
+        self.assertEqual(saver.await_args.args[0]["seq"], accepted_seq)
 
 
 class DL100ControlTests(unittest.IsolatedAsyncioTestCase):
