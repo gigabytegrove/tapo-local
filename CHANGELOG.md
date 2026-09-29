@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.3
+
+### Changed
+
+- Removed the cloud-assisted DL100 authentication path introduced in 0.6.1.
+- Tapo Local remains local-only and does not request or store TP-Link/Tapo cloud account credentials.
+- DL100 persistent local reauthentication remains a release-blocking issue until a durable local authorization artifact can be derived or recovered without TP-Link cloud access.
+
+
 ## 0.6.0
 
 ### DL100 reliability overhaul
