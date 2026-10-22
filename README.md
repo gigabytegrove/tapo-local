@@ -2,6 +2,13 @@
 
 # Tapo Local
 
+[![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gigabytegrove&repository=tapo-local&category=integration)
+[![GitHub stars](https://img.shields.io/github/stars/gigabytegrove/tapo-local?style=flat&label=Stars)](https://github.com/gigabytegrove/tapo-local/stargazers)
+[![GitHub repository](https://img.shields.io/badge/GitHub-Repository-181717?logo=github&logoColor=white)](https://github.com/gigabytegrove/tapo-local)
+[![Open issues](https://img.shields.io/github/issues/gigabytegrove/tapo-local)](https://github.com/gigabytegrove/tapo-local/issues)
+[![Latest GitHub release](https://img.shields.io/github/v/release/gigabytegrove/tapo-local?label=Release)](https://github.com/gigabytegrove/tapo-local/releases)
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-0070BA?logo=paypal&logoColor=white)](https://paypal.me/gigabytegrove)
+
 Tapo Local is a Home Assistant custom integration for **local-first TP-Link, Kasa, and Tapo devices**.
 
 It is built for people who want direct LAN control, deterministic protocol selection, and clear separation between local device access and TP-Link cloud services.
@@ -253,3 +260,7 @@ python-kasa is installed as a separate dependency and is not vendored into this 
 ## License
 
 Tapo Local source is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+
+## Support Gigabyte Grove
+
+If this project is useful to you, you can support ongoing Gigabyte Grove development with an optional [PayPal donation](https://paypal.me/gigabytegrove). Donations are appreciated but never required to use this integration.
