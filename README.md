@@ -58,14 +58,14 @@ For Home Assistant Container installations, the integration directory must be in
 
 ### python-kasa dependency
 
-Tapo Local uses **python-kasa redacted.invalid** for the supported Kasa/Tapo device families.
+Tapo Local requires **python-kasa redacted.invalid or newer** for the supported Kasa/Tapo device families.
 
 Normal Home Assistant users **do not need to install python-kasa manually**. Tapo Local declares the dependency in `manifest.json`, and Home Assistant's requirements manager installs it automatically when the integration loads.
 
 The integration declares this requirement:
 
 ```text
-python-kasa[speedups]==redacted.invalid
+python-kasa>=redacted.invalid
 ```
 
 The cryptography library is supplied by Home Assistant and python-kasa; it is not separately pinned in the integration manifest.

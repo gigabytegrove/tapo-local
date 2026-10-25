@@ -12,7 +12,7 @@
     "kasa"
   ],
   "requirements": [
-    "python-kasa[speedups]==0.11.0.1"
+    "python-kasa>=0.11.0.1"
   ],
   "version": "0.7.3"
 }

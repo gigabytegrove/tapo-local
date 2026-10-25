@@ -8,7 +8,7 @@
 - Preserved polling options, existing local protocol parameters, stored credential hashes, and private DL100 sessions.
 - Verified the new device's identity before accepting a changed address; unreachable, unsupported or mismatched devices do not overwrite the original host.
 - Added regression coverage for XOR, SMART/KLAP and DL100 address changes, IPv4/IPv6 input, authentication and failed connections.
-- Updated python-kasa to redacted.invalid to match current Home Assistant requirements; removed redundant explicit cryptography requirement from the manifest.
+- Set python-kasa minimum version to redacted.invalid for Home Assistant compatibility and future Home Assistant-managed upgrades; removed the redundant explicit cryptography requirement from the manifest.
 
 ## 0.7.1
 

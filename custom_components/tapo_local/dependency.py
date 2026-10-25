@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
+from packaging.version import InvalidVersion, Version
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -16,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 KASA_DISTRIBUTION = "python-kasa"
 KASA_VERSION = "0.11.0.1"
-KASA_REQUIREMENT = f"python-kasa[speedups]=={KASA_VERSION}"
+KASA_REQUIREMENT = f"python-kasa>={KASA_VERSION}"
 REQUIRED_REQUIREMENTS = [KASA_REQUIREMENT]
 DEPENDENCY_ISSUE_ID = "python_kasa_dependency"
 
@@ -35,6 +36,16 @@ def installed_kasa_version() -> str | None:
         return version(KASA_DISTRIBUTION)
     except PackageNotFoundError:
         return None
+
+
+def _meets_kasa_minimum(installed: str | None) -> bool:
+    """Accept the Home Assistant-managed package when it meets our minimum."""
+    if not installed:
+        return False
+    try:
+        return Version(installed) >= Version(KASA_VERSION)
+    except InvalidVersion:
+        return False
 
 
 def _create_dependency_issue(hass: HomeAssistant, detail: str) -> None:
@@ -70,7 +81,7 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
     """
     before = await hass.async_add_executor_job(installed_kasa_version)
 
-    needs_repair = before != KASA_VERSION
+    needs_repair = not _meets_kasa_minimum(before)
     if not needs_repair:
         try:
             await _async_verify_imports(hass)
@@ -104,9 +115,9 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
             raise TPLinkLocalDependencyError(detail) from exc
 
     installed = await hass.async_add_executor_job(installed_kasa_version)
-    if installed != KASA_VERSION:
+    if not _meets_kasa_minimum(installed):
         detail = (
-            f"Home Assistant expected python-kasa {KASA_VERSION} but the active "
+            f"Home Assistant requires python-kasa >= {KASA_VERSION} but the active "
             f"runtime reports {installed or 'not installed'}. No TP-Link device "
             "commands were attempted. Reload or restart Home Assistant after "
             "correcting the Python dependency environment."
