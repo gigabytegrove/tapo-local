@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 from functools import partial
@@ -65,6 +66,18 @@ DL100_CREDENTIALS_SCHEMA = vol.Schema(
         vol.Required(CONF_PASSWORD): cv.string,
     }
 )
+
+
+def _valid_reconfigure_host(host: str) -> bool:
+    """Accept hostnames, IPv4 and unbracketed IPv6, but never URLs or ports."""
+    if not _valid_reconfigure_host(host):
+        return False
+    if ":" in host:
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return False
+    return True
 
 
 def _smart_connection_from_discovery(
