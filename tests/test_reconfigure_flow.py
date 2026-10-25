@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import ipaddress
 from pathlib import Path
 import sys
 import types
@@ -114,7 +115,7 @@ def _extract_real_reconfigure_method() -> type:
         body=[method],
         decorator_list=[],
     )
-    module = ast.fix_missing_locations(ast.Module(body=[standalone_cls], type_ignores=[]))
+    module = ast.fix_missing_locations(ast.Module(body=[next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_valid_reconfigure_host"), standalone_cls], type_ignores=[]))
     return module
 
 
@@ -208,6 +209,7 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
 
         ns = {
             "__package__": "custom_components.tapo_local",
+            "ipaddress": ipaddress,
             "Any": object,
             "ConfigFlowResult": dict,
             "vol": FakeVol,
@@ -310,11 +312,16 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.probed, [])
 
     async def test_invalid_host_does_not_open_network_connection(self):
-        for host in ("", " ", "http://192.0.2.20", "192.0.2.5/path", "192.0.2.5 2"):
+        for host in ("", " ", "http://192.0.2.20", "192.0.2.5/path", "192.0.2.5 2", "192.0.2.5:80", "switch.local:80"):
             with self.subTest(host=host):
                 result = await self.flow.async_step_reconfigure({CONF_HOST: host})
                 self.assertEqual(result["errors"][CONF_HOST], "invalid_host")
                 self.assertEqual(self.probed, [])
+
+    async def test_ipv6_literal_supported(self):
+        result = await self.flow.async_step_reconfigure({CONF_HOST: "2001:db8::55"})
+        self.assertEqual(result["reason"], "reconfigure_successful")
+        self.assertEqual(self.entry.data[CONF_HOST], "2001:db8::55")
 
     async def test_smart_uses_private_hash_and_retains_transport(self):
         self.entry = FakeEntry(TRANSPORT_SMART)
