@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.3
+
+### Reconfiguration and Home Assistant compatibility
+
+- Added a native Reconfigure screen for updating a configured device's IP address or hostname without deleting its Home Assistant entry or recreating entities.
+- Preserved polling options, existing local protocol parameters, stored credential hashes, and private DL100 sessions.
+- Verified the new device's identity before accepting a changed address; unreachable, unsupported or mismatched devices do not overwrite the original host.
+- Added regression coverage for XOR, SMART/KLAP and DL100 address changes, IPv4/IPv6 input, authentication and failed connections.
+- Updated python-kasa to redacted.invalid to match current Home Assistant requirements; removed redundant explicit cryptography requirement from the manifest.
+
 ## 0.7.1
 
 ### UI clarification

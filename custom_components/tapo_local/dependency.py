@@ -15,10 +15,9 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 KASA_DISTRIBUTION = "python-kasa"
-KASA_VERSION = "0.10.2"
+KASA_VERSION = "0.11.0.1"
 KASA_REQUIREMENT = f"python-kasa[speedups]=={KASA_VERSION}"
-CRYPTO_REQUIREMENT = "cryptography>=1.9"
-REQUIRED_REQUIREMENTS = [KASA_REQUIREMENT, CRYPTO_REQUIREMENT]
+REQUIRED_REQUIREMENTS = [KASA_REQUIREMENT]
 DEPENDENCY_ISSUE_ID = "python_kasa_dependency"
 
 

@@ -5,7 +5,7 @@
 Tapo Local uses [python-kasa](https://github.com/python-kasa/python-kasa) as a runtime dependency.
 
 - Package: `python-kasa`
-- Version pinned by this project: `0.10.2`
+- Version pinned by this project: `redacted.invalid`
 - License: GPL-3.0-or-later
 - Source: https://github.com/python-kasa/python-kasa
 

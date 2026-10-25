@@ -58,21 +58,22 @@ For Home Assistant Container installations, the integration directory must be in
 
 ### python-kasa dependency
 
-Tapo Local uses **python-kasa 0.10.2** for the supported Kasa/Tapo device families.
+Tapo Local uses **python-kasa redacted.invalid** for the supported Kasa/Tapo device families.
 
 Normal Home Assistant users **do not need to install python-kasa manually**. Tapo Local declares the dependency in `manifest.json`, and Home Assistant's requirements manager installs it automatically when the integration loads.
 
-The required runtime packages are:
+The integration declares this requirement:
 
 ```text
-python-kasa[speedups]==0.10.2
-cryptography>=1.9
+python-kasa[speedups]==redacted.invalid
 ```
+
+The cryptography library is supplied by Home Assistant and python-kasa; it is not separately pinned in the integration manifest.
 
 For development, protocol testing, or a standalone Python environment outside Home Assistant, install the same pinned dependency with:
 
 ```bash
-python3 -m pip install 'python-kasa[speedups]==0.10.2' 'cryptography>=1.9'
+python3 -m pip install 'python-kasa[speedups]==redacted.invalid' 'cryptography>=1.9'
 ```
 
 Do **not** manually `pip install` python-kasa into a normal Home Assistant installation. Home Assistant should own and manage the integration's Python requirements.
@@ -89,11 +90,22 @@ After installation and restart:
 
 Tapo Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
 
+## Change a device IP address
+
+If a device receives a different DHCP address or moves to another subnet, **do not delete and re-add it**.
+
+1. Open **Settings → Devices & services → Tapo Local** in Home Assistant.
+2. Open the menu for the affected integration entry and select **Reconfigure**.
+3. Replace the prefilled **New IP address or hostname** field with the device's new address and submit.
+4. Tapo Local verifies that the new address belongs to the same device, updates that entry, and reloads it. Existing entities, history, automations and polling settings remain intact.
+
+If the device cannot be reached or its identity cannot be verified, Tapo Local keeps the old address and displays an error instead of silently connecting to another device. Authenticated Tapo devices reuse the existing privately stored local authentication; DL100 verification requires a working saved encrypted DLKLAP session. This changes only the device address, not passwords or pairing.
+
 ## What Tapo Local supports
 
 Tapo Local uses two local backends:
 
-- **python-kasa 0.10.2** for supported Kasa/Tapo plugs, switches, dimmers, bulbs, light strips, power strips, fans, hubs, and hub-connected sensors.
+- **python-kasa redacted.invalid** for supported Kasa/Tapo plugs, switches, dimmers, bulbs, light strips, power strips, fans, hubs, and hub-connected sensors.
 - A **native DLKLAP backend** for the Tapo DL100 smart lock.
 
 The integration maps device capabilities into native Home Assistant entities instead of exposing everything as generic controls.
@@ -164,7 +176,7 @@ SMART.TAPOHUB
 
 ### Tapo DL100
 
-Released python-kasa 0.10.2 does not include the DL100 DLKLAP lock protocol, so Tapo Local provides its own DLKLAP backend.
+Released python-kasa redacted.invalid does not include the DL100 DLKLAP lock protocol, so Tapo Local provides its own DLKLAP backend.
 
 DL100 setup is automatic. After the lock is identified locally, Tapo Local asks for the TP-Link/Tapo **owner account** credentials and performs the complete DLKLAP session-establishment flow itself:
 
