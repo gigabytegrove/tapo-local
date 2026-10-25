@@ -70,7 +70,7 @@ DL100_CREDENTIALS_SCHEMA = vol.Schema(
 
 def _valid_reconfigure_host(host: str) -> bool:
     """Accept hostnames, IPv4 and unbracketed IPv6, but never URLs or ports."""
-    if not _valid_reconfigure_host(host):
+    if not host or any(char in host for char in "/\\@?# \t\r\n") or "://" in host:
         return False
     if ":" in host:
         try:
@@ -732,7 +732,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             host = str(user_input[CONF_HOST]).strip()
-            if not host or any(char in host for char in "/\\@?# \t\r\n") or "://" in host:
+            if not _valid_reconfigure_host(host):
                 errors[CONF_HOST] = "invalid_host"
             elif host == entry.data[CONF_HOST]:
                 # No network availability is needed to leave the address alone.
