@@ -707,6 +707,170 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"path": import_path},
         )
 
+    async def async_step_reconfigure(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Change a device's network address without replacing its config entry."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host = str(user_input[CONF_HOST]).strip()
+            if not host or any(char in host for char in "/\\@?# \t\r\n") or "://" in host:
+                errors[CONF_HOST] = "invalid_host"
+            elif host == entry.data[CONF_HOST]:
+                # No network availability is needed to leave the address alone.
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={CONF_HOST: host},
+                    reload_even_if_entry_is_unchanged=False,
+                )
+            elif not entry.unique_id:
+                # An older entry with no stable identity cannot safely prove
+                # that the new address belongs to the same physical device.
+                errors["base"] = "device_identity_unavailable"
+            elif entry.data.get(CONF_TRANSPORT) == TRANSPORT_DLKLAP:
+                # DL100 session material belongs to the existing entry and
+                # must remain in its private store, not in the config flow.
+                from homeassistant.helpers.storage import Store
+
+                store = Store(
+                    self.hass,
+                    2,
+                    f"{DOMAIN}.dl100_session.{entry.entry_id}",
+                    private=True,
+                    atomic_writes=True,
+                )
+                stored = await store.async_load()
+                private_data = dict(stored) if isinstance(stored, dict) else {}
+                session = private_data.get(CONF_SESSION) or entry.data.get(CONF_SESSION)
+
+                if not isinstance(session, dict):
+                    errors["base"] = "dl100_session_missing"
+                else:
+                    dl100_module = await async_import_module(
+                        self.hass, f"{__package__}.dl100_backend"
+                    )
+                    DL100LocalDevice = dl100_module.DL100LocalDevice
+                    DL100ConnectionError = dl100_module.DL100ConnectionError
+                    DL100LocalError = dl100_module.DL100LocalError
+
+                    try:
+                        device = DL100LocalDevice(host, session_state=session)
+                        state = await device.get_state()
+                    except DL100ConnectionError:
+                        errors["base"] = "cannot_connect"
+                    except DL100LocalError:
+                        errors["base"] = "dl100_session_rejected"
+                    except Exception:
+                        _LOGGER.exception(
+                            "Unexpected DL100 address verification error for %s", host
+                        )
+                        errors["base"] = "unknown"
+                    else:
+                        # A successful encrypted DLKLAP exchange authenticates
+                        # the previously paired lock. Check any device ID in
+                        # its reply before accepting the address.
+                        sysinfo = state.get("sysinfo", {})
+                        observed_id = str(
+                            sysinfo.get("device_id") or sysinfo.get("deviceId") or ""
+                        )
+                        if observed_id and observed_id != entry.unique_id:
+                            errors["base"] = "wrong_device"
+                        else:
+                            await self.async_set_unique_id(entry.unique_id)
+                            self._abort_if_unique_id_mismatch()
+                            private_data[CONF_SESSION] = device.export_session()
+                            try:
+                                await store.async_save(private_data)
+                            except Exception:
+                                _LOGGER.exception(
+                                    "Unable to save DL100 session after address check"
+                                )
+                                errors["base"] = "unknown"
+                            else:
+                                return self.async_update_reload_and_abort(
+                                    entry, data_updates={CONF_HOST: host}
+                                )
+            else:
+                # Both XOR and SMART addresses are verified against the
+                # device's stable ID. SMART retains the exact previously
+                # approved transport and private credential hash.
+                try:
+                    await async_ensure_kasa(self.hass)
+                except TPLinkLocalDependencyError:
+                    errors["base"] = "dependency_unavailable"
+                else:
+                    kasa_module = await async_import_module(
+                        self.hass, f"{__package__}.kasa_backend"
+                    )
+                    KasaLocalDevice = kasa_module.KasaLocalDevice
+                    TPLinkLocalAuthenticationError = (
+                        kasa_module.TPLinkLocalAuthenticationError
+                    )
+                    TPLinkLocalBackendError = kasa_module.TPLinkLocalBackendError
+                    kwargs: dict[str, Any] = {}
+                    if entry.data.get(CONF_TRANSPORT) == TRANSPORT_SMART:
+                        from homeassistant.helpers.storage import Store
+
+                        credential_store = Store(
+                            self.hass,
+                            1,
+                            f"{DOMAIN}.kasa_credentials.{entry.entry_id}",
+                            private=True,
+                            atomic_writes=True,
+                        )
+                        stored = await credential_store.async_load()
+                        credentials_hash = (
+                            stored.get(CONF_CREDENTIALS_HASH)
+                            if isinstance(stored, dict)
+                            else None
+                        ) or entry.data.get(CONF_CREDENTIALS_HASH)
+                        if not credentials_hash:
+                            errors["base"] = "credentials_hash_unavailable"
+                        else:
+                            kwargs = {
+                                "device_family": entry.data[CONF_DEVICE_FAMILY],
+                                "encryption_type": entry.data[CONF_ENCRYPTION_TYPE],
+                                "login_version": entry.data.get(CONF_LOGIN_VERSION),
+                                "https": bool(entry.data.get(CONF_HTTPS, False)),
+                                "http_port": entry.data.get(CONF_HTTP_PORT),
+                                "credentials_hash": str(credentials_hash),
+                            }
+                    if not errors:
+                        backend = KasaLocalDevice(host, **kwargs)
+                        try:
+                            info = await backend.async_probe()
+                        except TPLinkLocalAuthenticationError:
+                            errors["base"] = "invalid_auth"
+                        except TPLinkLocalBackendError:
+                            errors["base"] = "cannot_connect"
+                        except Exception:
+                            _LOGGER.exception(
+                                "Unexpected device address verification error for %s",
+                                host,
+                            )
+                            errors["base"] = "unknown"
+                        else:
+                            observed_id = str(info.get("device_id") or "")
+                            if not observed_id:
+                                errors["base"] = "device_identity_unavailable"
+                            else:
+                                await self.async_set_unique_id(observed_id)
+                                self._abort_if_unique_id_mismatch()
+                                return self.async_update_reload_and_abort(
+                                    entry, data_updates={CONF_HOST: host}
+                                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_HOST, default=entry.data[CONF_HOST]): cv.string}
+            ),
+            errors=errors,
+        )
+
     @staticmethod
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
