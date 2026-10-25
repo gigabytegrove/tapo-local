@@ -28,6 +28,13 @@
           "username": "TP-Link/Tapo owner account email",
           "password": "TP-Link/Tapo owner account password"
         }
+      },
+      "reconfigure": {
+        "title": "Change device IP address",
+        "description": "Enter the device's new IP address or hostname. Tapo Local will verify the device at that address before updating the existing integration. Your entities, history, automations, polling settings, and saved authentication remain unchanged.",
+        "data": {
+          "host": "New IP address or hostname"
+        }
       }
     },
     "error": {
@@ -40,7 +47,10 @@
       "unknown": "Unexpected error.",
       "invalid_auth": "The device rejected the supplied credentials.",
       "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. Tapo Local will not store the plaintext password.",
-      "dl100_auth_failed": "Tapo Local could not create a DL100 session. Verify the owner account credentials, Internet access for session authorization, and local reachability to the lock."
+      "dl100_auth_failed": "Tapo Local could not create a DL100 session. Verify the owner account credentials, Internet access for session authorization, and local reachability to the lock.",
+      "invalid_host": "Enter a valid IP address or hostname, without a URL, port, or path.",
+      "device_identity_unavailable": "This entry has no verifiable device identity. The address was not changed to avoid connecting to a different device.",
+      "wrong_device": "A different device responded at that address. The existing IP address was not changed."
     },
     "abort": {
       "already_configured": "This device is already configured."
