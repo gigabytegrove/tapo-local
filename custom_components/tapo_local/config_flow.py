@@ -222,6 +222,8 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._pending_dl100: dict[str, Any] | None = None
         self._pending_smart: dict[str, Any] | None = None
+        self._pending_dl100_reconfigure_host: str | None = None
+        self._pending_dl100_reconfigure_entry_id: str | None = None
 
     async def async_step_user(
         self,
@@ -709,17 +711,134 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if candidates and not errors:
             _LOGGER.warning(
-                "No saved DL100 local session verified for %s: %s",
+                "Saved DL100 local sessions did not verify at %s; "
+                "offering a fresh owner-authorized session",
                 self._pending_dl100["host"],
-                last_error,
             )
-            errors["base"] = "dl100_session_rejected"
+        # Older in-progress installation flows must never strand the user
+        # on an invalid imported session. Fresh authorization uses the owner
+        # credentials form and preserves the existing config entry.
+        return await self.async_step_dl100_credentials()
+
+    async def async_step_reconfigure_dl100_credentials(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Renew a DL100 LAN session at the proposed address, then reload."""
+        entry = self._get_reconfigure_entry()
+        host = self._pending_dl100_reconfigure_host
+        if (
+            not host
+            or self._pending_dl100_reconfigure_entry_id != entry.entry_id
+            or entry.data.get(CONF_TRANSPORT) != TRANSPORT_DLKLAP
+            or not entry.unique_id
+        ):
+            return self.async_abort(reason="cannot_connect")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            # Only the previously authorized device identity may be used for
+            # DLKLAP provisioning. Never discover a replacement lock by IP.
+            from homeassistant.helpers.storage import Store
+
+            store = Store(
+                self.hass,
+                DL100_SESSION_STORE_VERSION,
+                f"{DOMAIN}.dl100_session.{entry.entry_id}",
+                private=True,
+                atomic_writes=True,
+            )
+            saved = await store.async_load()
+            private_data = dict(saved) if isinstance(saved, dict) else {}
+            username = str(user_input[CONF_USERNAME]).strip()
+            password = str(user_input[CONF_PASSWORD])
+            terminal_uuid = private_data.get(CONF_TERMINAL_UUID) or entry.data.get(
+                CONF_TERMINAL_UUID
+            )
+            auth_module = await async_import_module(
+                self.hass, f"{__package__}.dl100_auth"
+            )
+            try:
+                provisioned = await self.hass.async_add_executor_job(
+                    partial(
+                        auth_module.establish_session,
+                        host,
+                        username,
+                        password,
+                        terminal_uuid=str(terminal_uuid) if terminal_uuid else None,
+                        device_id=str(entry.unique_id),
+                    )
+                )
+            except auth_module.DL100ProvisioningError:
+                _LOGGER.warning(
+                    "DL100 session renewal failed at %s; existing address retained",
+                    host,
+                )
+                errors["base"] = "dl100_auth_failed"
+            except Exception:
+                _LOGGER.exception("Unexpected DL100 renewal failure at %s", host)
+                errors["base"] = "unknown"
+            else:
+                if str(provisioned.get("device_id") or "") != str(entry.unique_id):
+                    errors["base"] = "wrong_device"
+                else:
+                    dl100_module = await async_import_module(
+                        self.hass, f"{__package__}.dl100_backend"
+                    )
+                    try:
+                        device = dl100_module.DL100LocalDevice(
+                            host, session_state=provisioned["session"]
+                        )
+                        state = await device.get_state()
+                    except dl100_module.DL100ConnectionError:
+                        errors["base"] = "cannot_connect"
+                    except dl100_module.DL100LocalError:
+                        errors["base"] = "dl100_auth_failed"
+                    except Exception:
+                        _LOGGER.exception(
+                            "Unexpected fresh DL100 verification failure at %s",
+                            host,
+                        )
+                        errors["base"] = "unknown"
+                    else:
+                        info = state.get("sysinfo", {})
+                        observed_id = str(
+                            info.get("device_id") or info.get("deviceId") or ""
+                        )
+                        if observed_id and observed_id != str(entry.unique_id):
+                            errors["base"] = "wrong_device"
+                        else:
+                            await self.async_set_unique_id(entry.unique_id)
+                            self._abort_if_unique_id_mismatch()
+                            # All sensitive values remain in the same private
+                            # entry store. Do not overwrite a working original
+                            # session or original host until validation succeeds.
+                            private_data.update(
+                                {
+                                    CONF_SESSION: device.export_session(),
+                                    CONF_CLOUD_USERNAME: username,
+                                    CONF_CLOUD_PASSWORD: password,
+                                    CONF_TERMINAL_UUID: provisioned["terminal_uuid"],
+                                    CONF_DL100_DEVICE_ID: provisioned["device_id"],
+                                }
+                            )
+                            try:
+                                await store.async_save(private_data)
+                            except Exception:
+                                _LOGGER.exception(
+                                    "Could not persist verified DL100 renewal at %s",
+                                    host,
+                                )
+                                errors["base"] = "unknown"
+                            else:
+                                return self.async_update_reload_and_abort(
+                                    entry, data_updates={CONF_HOST: host}
+                                )
 
         return self.async_show_form(
-            step_id="dl100_session",
-            data_schema=DL100_RETRY_SCHEMA,
+            step_id="reconfigure_dl100_credentials",
+            data_schema=DL100_CREDENTIALS_SCHEMA,
             errors=errors,
-            description_placeholders={"path": import_path},
         )
 
     async def async_step_reconfigure(
@@ -760,15 +879,15 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 stored = await store.async_load()
                 private_data = dict(stored) if isinstance(stored, dict) else {}
                 session = private_data.get(CONF_SESSION) or entry.data.get(CONF_SESSION)
+                needs_refresh = not isinstance(session, dict)
 
-                if not isinstance(session, dict):
-                    errors["base"] = "dl100_session_missing"
-                else:
+                if not needs_refresh:
                     dl100_module = await async_import_module(
                         self.hass, f"{__package__}.dl100_backend"
                     )
                     DL100LocalDevice = dl100_module.DL100LocalDevice
                     DL100ConnectionError = dl100_module.DL100ConnectionError
+                    DL100SessionError = dl100_module.DL100SessionError
                     DL100LocalError = dl100_module.DL100LocalError
 
                     try:
@@ -776,6 +895,11 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         state = await device.get_state()
                     except DL100ConnectionError:
                         errors["base"] = "cannot_connect"
+                    except DL100SessionError:
+                        # Session cookies/sequence are allowed to expire. Use
+                        # saved owner authorization rather than trapping the
+                        # user on an unrecoverable cached session.
+                        needs_refresh = True
                     except DL100LocalError:
                         errors["base"] = "dl100_session_rejected"
                     except Exception:
@@ -808,6 +932,25 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 return self.async_update_reload_and_abort(
                                     entry, data_updates={CONF_HOST: host}
                                 )
+
+                if needs_refresh:
+                    self._pending_dl100_reconfigure_host = host
+                    self._pending_dl100_reconfigure_entry_id = entry.entry_id
+                    # The owner has already authorized Home Assistant to
+                    # retain these credentials for automatic DL100 renewal.
+                    # No cloud call is made unless the saved LAN session has
+                    # failed or is missing.
+                    username = private_data.get(CONF_CLOUD_USERNAME) or entry.data.get(
+                        CONF_CLOUD_USERNAME
+                    )
+                    password = private_data.get(CONF_CLOUD_PASSWORD) or entry.data.get(
+                        CONF_CLOUD_PASSWORD
+                    )
+                    if username and password:
+                        return await self.async_step_reconfigure_dl100_credentials(
+                            {CONF_USERNAME: username, CONF_PASSWORD: password}
+                        )
+                    return await self.async_step_reconfigure_dl100_credentials()
             else:
                 # Both XOR and SMART addresses are verified against the
                 # device's stable ID. SMART retains the exact previously

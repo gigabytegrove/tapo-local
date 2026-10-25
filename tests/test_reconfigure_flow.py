@@ -24,6 +24,12 @@ SOURCE = (
 CONF_HOST = "host"
 CONF_TRANSPORT = "transport"
 CONF_SESSION = "session"
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+CONF_CLOUD_USERNAME = "cloud_username"
+CONF_CLOUD_PASSWORD = "cloud_password"
+CONF_TERMINAL_UUID = "terminal_uuid"
+CONF_DL100_DEVICE_ID = "dl100_device_id"
 CONF_CREDENTIALS_HASH = "credentials_hash"
 CONF_DEVICE_FAMILY = "device_family"
 CONF_ENCRYPTION_TYPE = "encryption_type"
@@ -51,7 +57,15 @@ class FakeDL100ConnectionError(Exception):
 
 
 class FakeDL100Error(Exception):
-    """DL100 rejected a previously authorized session."""
+    """DL100 local error."""
+
+
+class FakeDL100SessionError(FakeDL100Error):
+    """DL100 rejected an expired saved session."""
+
+
+class FakeProvisionError(Exception):
+    """Cloud-authorized fresh session provisioning failed."""
 
 
 class FakeDependencyError(Exception):
@@ -103,16 +117,19 @@ def _extract_real_reconfigure_method() -> type:
         node for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == "TPLinkLocalConfigFlow"
     )
-    method = next(
+    methods = [
         node for node in config_cls.body
         if isinstance(node, ast.AsyncFunctionDef)
-        and node.name == "async_step_reconfigure"
-    )
+        and node.name in (
+            "async_step_reconfigure",
+            "async_step_reconfigure_dl100_credentials",
+        )
+    ]
     standalone_cls = ast.ClassDef(
         name="RealReconfigureFlow",
         bases=[],
         keywords=[],
-        body=[method],
+        body=methods,
         decorator_list=[],
     )
     module = ast.fix_missing_locations(ast.Module(body=[next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_valid_reconfigure_host"), standalone_cls], type_ignores=[]))
@@ -129,6 +146,9 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
         self.dl100_result = {"sysinfo": {"device_id": "device-123"}}
         self.kasa_exception = None
         self.dl100_exception = None
+        self.provision_exception = None
+        self.provision_device_id = None
+        self.provision_attempts = []
         self.dependencies_fail = False
         self.reloads = 0
         self.unique_ids = []
@@ -145,10 +165,11 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
 
         class FakeDL100:
             def __init__(self, host, *, session_state):
+                self.session_state = dict(session_state)
                 testcase.probed.append(("dl100", host, dict(session_state)))
 
             async def get_state(self):
-                if testcase.dl100_exception:
+                if testcase.dl100_exception and self.session_state.get("seq") == 50:
                     raise testcase.dl100_exception
                 return testcase.dl100_result
 
@@ -180,9 +201,29 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
                 return types.SimpleNamespace(
                     DL100LocalDevice=FakeDL100,
                     DL100ConnectionError=FakeDL100ConnectionError,
+                    DL100SessionError=FakeDL100SessionError,
                     DL100LocalError=FakeDL100Error,
                 )
+            if module.endswith(".dl100_auth"):
+                return types.SimpleNamespace(
+                    establish_session=fake_establish_session,
+                    DL100ProvisioningError=FakeProvisionError,
+                )
             raise AssertionError(f"unexpected module import {module}")
+
+        def fake_establish_session(
+            host, username, password, *, terminal_uuid=None, device_id=None
+        ):
+            testcase.provision_attempts.append(
+                (host, username, password, terminal_uuid, device_id)
+            )
+            if testcase.provision_exception:
+                raise testcase.provision_exception
+            return {
+                "device_id": testcase.provision_device_id or device_id,
+                "session": {"seq": 60},
+                "terminal_uuid": terminal_uuid or "NEW-UUID",
+            }
 
         async def fake_ensure_kasa(hass):
             if testcase.dependencies_fail:
@@ -207,6 +248,13 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
             def exception(self, *args, **kwargs):
                 pass
 
+            def warning(self, *args, **kwargs):
+                pass
+
+        class FakeHass:
+            async def async_add_executor_job(self, callback, *args):
+                return callback(*args)
+
         ns = {
             "__package__": "custom_components.tapo_local",
             "ipaddress": ipaddress,
@@ -218,6 +266,16 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
             "CONF_HOST": CONF_HOST,
             "CONF_TRANSPORT": CONF_TRANSPORT,
             "CONF_SESSION": CONF_SESSION,
+            "CONF_USERNAME": CONF_USERNAME,
+            "CONF_PASSWORD": CONF_PASSWORD,
+            "CONF_CLOUD_USERNAME": CONF_CLOUD_USERNAME,
+            "CONF_CLOUD_PASSWORD": CONF_CLOUD_PASSWORD,
+            "CONF_TERMINAL_UUID": CONF_TERMINAL_UUID,
+            "CONF_DL100_DEVICE_ID": CONF_DL100_DEVICE_ID,
+            "DL100_CREDENTIALS_SCHEMA": {
+                "username": str, "password": str
+            },
+            "partial": __import__("functools").partial,
             "CONF_CREDENTIALS_HASH": CONF_CREDENTIALS_HASH,
             "CONF_DEVICE_FAMILY": CONF_DEVICE_FAMILY,
             "CONF_ENCRYPTION_TYPE": CONF_ENCRYPTION_TYPE,
@@ -236,7 +294,7 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
         }
         exec(compile(_extract_real_reconfigure_method(), str(SOURCE), "exec"), ns)
         self.flow = ns["RealReconfigureFlow"]()
-        self.flow.hass = object()
+        self.flow.hass = FakeHass()
         self.flow._get_reconfigure_entry = lambda: testcase.entry
 
         async def set_id(device_id):
@@ -263,6 +321,7 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
         self.flow._abort_if_unique_id_mismatch = verify_id
         self.flow.async_update_reload_and_abort = update
         self.flow.async_show_form = form
+        self.flow.async_abort = lambda *, reason: {"type": "abort", "reason": reason}
 
     async def test_form_prefills_current_host(self):
         response = await self.flow.async_step_reconfigure()
@@ -399,11 +458,111 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.saved, [])
         self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.10")
 
-    async def test_dl100_missing_session_rejected(self):
+    async def test_dl100_missing_session_offers_credential_recovery(self):
         self.entry = FakeEntry(TRANSPORT_DLKLAP)
         result = await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
-        self.assertEqual(result["errors"]["base"], "dl100_session_missing")
+        self.assertEqual(result["step_id"], "reconfigure_dl100_credentials")
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.10")
         self.assertEqual(self.reloads, 0)
+        self.assertEqual(self.provision_attempts, [])
+
+    async def test_dl100_expired_session_renews_with_stored_credentials(self):
+        self.entry = FakeEntry(TRANSPORT_DLKLAP)
+        key = "tapo_local.dl100_session.existing-entry"
+        self.storage[key] = {
+            CONF_SESSION: {"seq": 50},
+            CONF_CLOUD_USERNAME: "owner@example.test",
+            CONF_CLOUD_PASSWORD: "saved-owner-password",
+            CONF_TERMINAL_UUID: "EXISTING-UUID",
+            CONF_DL100_DEVICE_ID: "device-123",
+        }
+        self.dl100_exception = FakeDL100SessionError()
+        result = await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
+        self.assertEqual(result["reason"], "reconfigure_successful")
+        self.assertEqual(len(self.provision_attempts), 1)
+        self.assertEqual(self.provision_attempts[0][0], "192.0.2.99")
+        self.assertEqual(self.provision_attempts[0][3], "EXISTING-UUID")
+        self.assertEqual(self.provision_attempts[0][4], "device-123")
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.99")
+        self.assertEqual(self.entry.options, {"poll_interval": 11})
+        self.assertEqual(self.storage[key][CONF_SESSION]["seq"], 123)
+        self.assertEqual(self.storage[key][CONF_CLOUD_PASSWORD], "saved-owner-password")
+        self.assertNotIn(CONF_CLOUD_PASSWORD, self.entry.data)
+        self.assertEqual(self.reloads, 1)
+
+    async def test_dl100_expired_session_prompts_when_owner_credentials_missing(self):
+        self.entry = FakeEntry(TRANSPORT_DLKLAP)
+        key = "tapo_local.dl100_session.existing-entry"
+        self.storage[key] = {CONF_SESSION: {"seq": 50}}
+        self.dl100_exception = FakeDL100SessionError()
+        form = await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
+        self.assertEqual(form["step_id"], "reconfigure_dl100_credentials")
+        self.assertEqual(self.provision_attempts, [])
+        result = await self.flow.async_step_reconfigure_dl100_credentials({
+            CONF_USERNAME: "new-owner@example.test",
+            CONF_PASSWORD: "new-secret",
+        })
+        self.assertEqual(result["reason"], "reconfigure_successful")
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.99")
+        self.assertEqual(self.storage[key][CONF_CLOUD_USERNAME], "new-owner@example.test")
+        self.assertEqual(self.storage[key][CONF_CLOUD_PASSWORD], "new-secret")
+
+    async def test_dl100_failed_automatic_renewal_does_not_change_address_or_secrets(self):
+        self.entry = FakeEntry(TRANSPORT_DLKLAP)
+        key = "tapo_local.dl100_session.existing-entry"
+        saved = {
+            CONF_SESSION: {"seq": 50},
+            CONF_CLOUD_USERNAME: "owner@example.test",
+            CONF_CLOUD_PASSWORD: "bad-stored-password",
+        }
+        self.storage[key] = copy.deepcopy(saved)
+        self.dl100_exception = FakeDL100SessionError()
+        self.provision_exception = FakeProvisionError()
+        form = await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
+        self.assertEqual(form["step_id"], "reconfigure_dl100_credentials")
+        self.assertEqual(form["errors"]["base"], "dl100_auth_failed")
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.10")
+        self.assertEqual(self.storage[key], saved)
+        self.assertEqual(self.saved, [])
+        self.assertEqual(self.reloads, 0)
+
+    async def test_dl100_connection_error_never_attempts_cloud_renewal(self):
+        self.entry = FakeEntry(TRANSPORT_DLKLAP)
+        self.storage["tapo_local.dl100_session.existing-entry"] = {
+            CONF_SESSION: {"seq": 50},
+            CONF_CLOUD_USERNAME: "owner@example.test",
+            CONF_CLOUD_PASSWORD: "stored-password",
+        }
+        self.dl100_exception = FakeDL100ConnectionError()
+        form = await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
+        self.assertEqual(form["step_id"], "reconfigure")
+        self.assertEqual(form["errors"]["base"], "cannot_connect")
+        self.assertEqual(self.provision_attempts, [])
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.10")
+
+    async def test_dl100_renewal_rejects_wrong_cloud_device_identity(self):
+        self.entry = FakeEntry(TRANSPORT_DLKLAP)
+        key = "tapo_local.dl100_session.existing-entry"
+        self.storage[key] = {CONF_SESSION: {"seq": 50}}
+        self.dl100_exception = FakeDL100SessionError()
+        await self.flow.async_step_reconfigure({CONF_HOST: "192.0.2.99"})
+        self.provision_device_id = "wrong-lock"
+        form = await self.flow.async_step_reconfigure_dl100_credentials({
+            CONF_USERNAME: "owner@example.test",
+            CONF_PASSWORD: "password",
+        })
+        self.assertEqual(form["errors"]["base"], "wrong_device")
+        self.assertEqual(self.entry.data[CONF_HOST], "192.0.2.10")
+        self.assertEqual(self.storage[key][CONF_SESSION], {"seq": 50})
+        self.assertEqual(self.saved, [])
+
+    async def test_old_saved_session_import_can_fall_back_to_owner_authorization(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        step = source.split("    async def async_step_dl100_session(", 1)[1].split(
+            "    async def async_step_reconfigure_dl100_credentials(", 1
+        )[0]
+        self.assertIn("return await self.async_step_dl100_credentials()", step)
+        self.assertNotIn('step_id="dl100_session"', step)
 
 
 if __name__ == "__main__":

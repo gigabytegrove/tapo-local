@@ -99,7 +99,7 @@ If a device receives a different DHCP address or moves to another subnet, **do n
 3. Replace the prefilled **New IP address or hostname** field with the device's new address and submit.
 4. Tapo Local verifies that the new address belongs to the same device, updates that entry, and reloads it. Existing entities, history, automations and polling settings remain intact.
 
-If the device cannot be reached or its identity cannot be verified, Tapo Local keeps the old address and displays an error instead of silently connecting to another device. Authenticated Tapo devices reuse the existing privately stored local authentication; DL100 verification requires a working saved encrypted DLKLAP session. This changes only the device address, not passwords or pairing.
+If the device cannot be reached or its identity cannot be verified, Tapo Local keeps the old address and displays an error instead of silently connecting to another device. Authenticated Tapo devices reuse existing locally stored authentication. For DL100, if the saved encrypted DLKLAP session is rejected or missing, Tapo Local first attempts owner-authorized renewal using credentials already saved privately in Home Assistant. If the credentials are unavailable or renewal fails, the reconfigure flow displays a dedicated owner-account form; it does not require a factory reset or manual session-import JSON. Fresh authorization briefly contacts TP-Link services, while normal lock status and commands remain on the LAN. The original IP and saved session are retained until a fresh LAN verification succeeds.
 
 ## What Tapo Local supports
 

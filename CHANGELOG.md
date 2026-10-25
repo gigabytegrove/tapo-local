@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.4
+
+### DL100 IP changes and expired-session recovery
+
+- Fixed Reconfigure failing permanently when a DL100 rejects an expired saved DLKLAP session at its new IP address.
+- Reuse the existing privately saved owner account and authorized device ID to refresh the encrypted LAN session at the **new** address; never attempt cloud provisioning for a simple connection timeout.
+- Add a dedicated owner-reauthorization step when credentials were not retained or automatic renewal fails.
+- Keep the previous IP and private session untouched if the new device cannot be verified, credentials fail, or the device ID does not match the original entry.
+- Recover old in-progress DL100 session-import flows by offering fresh authorized credentials instead of stranding users on a rejected import.
+- Expand simulated regressions for expired sessions, missing credentials, failed renewal, mismatched identity, unchanged settings and connection errors.
+
 ## 0.7.3
 
 ### Reconfiguration and Home Assistant compatibility
