@@ -33,6 +33,8 @@ from .const import (
     DEFAULT_LOCK_POLL_INTERVAL,
     DEFAULT_POLL_INTERVAL,
     DL100_SESSION_IMPORT,
+    DL100_SESSION_STORE_VERSION,
+    KASA_CREDENTIAL_STORE_VERSION,
     DOMAIN,
     MAX_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
@@ -737,7 +739,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 store = Store(
                     self.hass,
-                    2,
+                    DL100_SESSION_STORE_VERSION,
                     f"{DOMAIN}.dl100_session.{entry.entry_id}",
                     private=True,
                     atomic_writes=True,
@@ -816,7 +818,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                         credential_store = Store(
                             self.hass,
-                            1,
+                            KASA_CREDENTIAL_STORE_VERSION,
                             f"{DOMAIN}.kasa_credentials.{entry.entry_id}",
                             private=True,
                             atomic_writes=True,
