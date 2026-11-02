@@ -8,6 +8,7 @@ import ipaddress
 import json
 from pathlib import Path
 import sys
+from unittest.mock import AsyncMock
 import types
 import unittest
 from unittest.mock import patch
@@ -83,6 +84,7 @@ class CIDRScanTests(unittest.IsolatedAsyncioTestCase):
             sends.append(host)
             return 3
         with (patch.object(scan, "_send", side_effect=send),
+              patch.object(scan, "_tcp_probe_legacy", new_callable=AsyncMock, return_value=None),
               patch.object(scan, "HOST_BATCH_SIZE", 2),
               patch.object(scan, "HOSTS_PER_SECOND", 1000),
               patch.object(scan, "REPLY_GRACE_SECONDS", 0)):
@@ -98,7 +100,8 @@ class CIDRScanTests(unittest.IsolatedAsyncioTestCase):
         async def send(_sock, host, _probes):
             sends.append(host)
             return 3
-        with patch.object(scan, "_send", side_effect=send), patch.object(scan, "REPLY_GRACE_SECONDS", 0):
+        with patch.object(scan, "_send", side_effect=send),
+              patch.object(scan, "_tcp_probe_legacy", new_callable=AsyncMock, return_value=None), patch.object(scan, "REPLY_GRACE_SECONDS", 0):
             await scan.async_scan_local_devices("172.20.0.34")
         self.assertEqual(sends, ["172.20.0.34", "172.20.0.34"])
 
@@ -108,6 +111,63 @@ class CIDRScanTests(unittest.IsolatedAsyncioTestCase):
                 await scan.async_scan_local_devices("172.16.0.0/12")
             mock_send.assert_not_called()
 
+
+
+class AutoInterfaceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_auto_uses_network_adapter_prefix(self):
+        async def get_adapters(hass):
+            return [{"enabled": True, "default": True, "ipv4": [
+                {"address": "192.168.0.19", "network_prefix": 24},
+            ]}, {"enabled": True, "default": False, "ipv4": [
+                {"address": "172.20.1.50", "network_prefix": 16},
+            ]}, {"enabled": False, "ipv4": [
+                {"address": "10.1.2.3", "network_prefix": 24},
+            ]}]
+        network = types.ModuleType("homeassistant.components.network")
+        network.async_get_adapters = get_adapters
+        components = types.ModuleType("homeassistant.components")
+        components.network = network
+        hass = types.ModuleType("homeassistant")
+        hass.components = components
+        with patch.dict(sys.modules, {
+            "homeassistant": hass, "homeassistant.components": components,
+            "homeassistant.components.network": network,
+        }):
+            self.assertEqual(
+                await scan.async_detect_local_targets(object()),
+                ["192.168.0.0/24", "172.20.0.0/16"],
+            )
+
+    async def test_explicit_cidr_is_used_instead_of_interface(self):
+        scanned = []
+        async def fake_scan(target, *, progress_callback):
+            scanned.append(target)
+            progress_callback(1.0)
+            return []
+        with patch.object(scan, "async_scan_local_devices", side_effect=fake_scan):
+            await scan.async_scan_selected_networks(object(), "172.20.0.0/16")
+        self.assertEqual(scanned, ["172.20.0.0/16"])
+
+    async def test_tcp_probe_validates_legacy_framed_xor(self):
+        async def handle(reader, writer):
+            length = int.from_bytes(await reader.readexactly(4), "big")
+            self.assertIn(b"get_sysinfo", scan._xor_decrypt(await reader.readexactly(length)))
+            raw = scan._xor_encrypt(json.dumps({"system":{"get_sysinfo":{
+                "model": "KS200(US)", "type": "IOT.SMARTPLUGSWITCH",
+                "alias": "Garage", "deviceId": "kasa-1"
+            }}}).encode())
+            writer.write(len(raw).to_bytes(4,"big") + raw)
+            await writer.drain()
+            writer.close()
+        server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        try:
+            port = server.sockets[0].getsockname()[1]
+            result = await scan._tcp_probe_legacy("127.0.0.1", port=port, timeout=1.0)
+        finally:
+            server.close()
+            await server.wait_closed()
+        self.assertEqual(result["model"], "KS200")
+        self.assertEqual(result["device_id"], "kasa-1")
 
 if __name__ == "__main__":
     unittest.main()

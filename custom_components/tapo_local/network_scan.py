@@ -182,7 +182,7 @@ async def _listen(
 
 
 async def _tcp_probe_legacy(
-    host: str, *, timeout: float = 0.45
+    host: str, *, timeout: float = 0.45, port: int = 9999
 ) -> dict[str, str] | None:
     """Probe legacy Kasa TCP/9999 where UDP discovery is disabled.
 
@@ -191,7 +191,7 @@ async def _tcp_probe_legacy(
     """
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, 9999), timeout=timeout
+            asyncio.open_connection(host, port), timeout=timeout
         )
     except (OSError, TimeoutError):
         return None
