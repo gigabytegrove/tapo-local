@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.5
+
+### On-demand LAN auto-discovery
+
+- Added a bounded, local-only broadcast scan to the Add Integration flow. Leave the host blank and submit to find supported TP-Link, Kasa and Tapo devices without entering their addresses.
+- Discover legacy XOR switches/plugs over UDP 9999 and newer SMART/DL100 candidates over TDP UDP 20002/20004.
+- Show model, device label and address, exclude already configured devices, and require explicit selection before entering the existing protocol/identity verification and authorization flow.
+- Permit a private IPv4 directed-broadcast target for installations with multiple VLANs; preserve direct IP/hostname setup when broadcasts are blocked or a sleeping DL100 does not respond.
+- Avoid cloud access, stored passwords, continuous scans, network-wide host sweeps and automatic device enrollment during discovery.
+- Add offline protocol parsing, input validation and configuration-flow regression tests.
+
 ## 0.7.4
 
 ### DL100 IP changes and expired-session recovery
