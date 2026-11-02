@@ -5,6 +5,9 @@
     "@gigabytegrove"
   ],
   "config_flow": true,
+  "dependencies": [
+    "network"
+  ],
   "documentation": "https://github.com/gigabytegrove/tapo-local",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/gigabytegrove/tapo-local/issues",
@@ -14,8 +17,5 @@
   "requirements": [
     "python-kasa>=0.11.0.1"
   ],
-  "version": "0.7.7",
-  "dependencies": [
-    "network"
-  ]
+  "version": "0.7.7"
 }
