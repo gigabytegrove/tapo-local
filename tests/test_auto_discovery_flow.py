@@ -104,6 +104,16 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(form["data_schema"][DISCOVERED_HOST]),{"172.20.0.33"})
         self.assertEqual(self.progress, [.5, 1.0])
 
+
+    async def test_existing_host_aborts_before_provisioning(self):
+        self.flow._async_current_entries = lambda: [
+            types.SimpleNamespace(
+                data={HOST:"172.20.0.79"}, unique_id="garage-lock"
+            )
+        ]
+        result = await self.flow.async_step_user({HOST:"172.20.0.79"})
+        self.assertEqual(result, {"type":"abort","reason":"already_configured"})
+
     async def test_invalid_selection_not_probed(self):
         self.flow._discovered = {"172.20.0.33":dict(
             host="172.20.0.33",alias="New",model="KS200",device_id="c"

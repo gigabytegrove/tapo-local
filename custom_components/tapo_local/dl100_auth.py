@@ -29,9 +29,16 @@ SESSION_COOKIE_NAME = "TP_SESSIONID"
 class DL100ProvisioningError(Exception):
     """Fresh DLKLAP session establishment failed, with a safe stage identifier."""
 
-    def __init__(self, message: str, *, stage: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str | None = None,
+        code: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.stage = stage
+        self.code = code
 
 
 @contextmanager
@@ -189,6 +196,56 @@ def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
     return str(device_id)
 
 
+def _parse_control_key_response(raw: bytes) -> str:
+    """Extract the key without returning or logging sensitive cloud response data.
+
+    TP-Link uses both error_code and code in API failures. A 15033 means
+    the owning account did not match the lock's current handshake challenge
+    (including a challenge invalidated by another handshake0).
+    """
+    try:
+        payload = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise DL100ProvisioningError(
+            "control-key response was not valid JSON", stage="control_key"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise DL100ProvisioningError(
+            "control-key response was not an object", stage="control_key"
+        )
+    item = payload.get("result") or payload.get("data") or payload
+    if not isinstance(item, dict):
+        raise DL100ProvisioningError(
+            "control-key response contained no result", stage="control_key"
+        )
+    key = item.get("controlKey") or item.get("control_key")
+    if isinstance(key, str) and len(key) == 64 and all(
+        char in "0123456789abcdefABCDEF" for char in key
+    ):
+        return key
+    code = payload.get("error_code")
+    if code is None:
+        code = payload.get("code")
+    if code is None:
+        code = item.get("error_code", item.get("code"))
+    try:
+        code_int = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        code_int = None
+    if code_int == 15033:
+        raise DL100ProvisioningError(
+            "DL100 control-key rejected (15033): owner mismatch or superseded "
+            "handshake challenge",
+            stage="control_key",
+            code=15033,
+        )
+    raise DL100ProvisioningError(
+        f"DL100 control-key not issued (error code {code_int if code_int is not None else 'unavailable'})",
+        stage="control_key",
+        code=code_int,
+    )
+
+
 def establish_session(
     host: str,
     username: str,
@@ -260,17 +317,7 @@ def establish_session(
         )
         if status != 200:
             raise DL100ProvisioningError(f"control-key endpoint returned HTTP {status}")
-        try:
-            ck_response = json.loads(ck_raw)
-        except json.JSONDecodeError as exc:
-            raise DL100ProvisioningError("control-key endpoint returned invalid JSON") from exc
-        ck_obj = ck_response.get("result") or ck_response.get("data") or ck_response
-        if not isinstance(ck_obj, dict):
-            raise DL100ProvisioningError("control-key response was not a JSON object")
-        control_key = ck_obj.get("controlKey") or ck_obj.get("control_key")
-        if not control_key:
-            code = ck_response.get("error_code") or ck_response.get("code")
-            raise DL100ProvisioningError(f"control-key missing (code={code})")
+        control_key = _parse_control_key_response(ck_raw)
 
     # Handshake 1
     ck = str(control_key).upper().encode("ascii")

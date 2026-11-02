@@ -73,11 +73,12 @@
       "invalid_selection": "Select a device from the current discovery results.",
       "dl100_cloud_login_failed": "DL100 owner-account login failed. Check account credentials, TP-Link cloud availability, and any account verification requirements. Details appear in Home Assistant logs.",
       "dl100_cloud_device_failed": "DL100 identification failed: the account did not return one identifiable DL100 device. Confirm the account owns the lock and review Home Assistant logs.",
-      "dl100_control_key_failed": "DL100 owner authorization reached the control-key service but no usable control key was issued. Check Home Assistant logs for the HTTP status or error code.",
-      "dl100_local_handshake_failed": "DL100 local encrypted handshake failed. Check that the lock is awake and reachable on TCP port 80; Home Assistant logs identify the failed handshake."
+      "dl100_control_key_failed": "TP-Link's DL100 control-key authorization failed. Check the exact HTTP status or numeric error code in Home Assistant logs. A device that is already configured should be managed through its existing entry.",
+      "dl100_local_handshake_failed": "DL100 local encrypted handshake failed. Check that the lock is awake and reachable on TCP port 80; Home Assistant logs identify the failed handshake.",
+      "dl100_control_key_account_mismatch": "DL100 control-key rejected (15033). TP-Link reports an owner-account or handshake challenge mismatch. Use the lock's original Tapo owner account, not a shared account. If this lock already exists in Tapo Local, keep its existing session and use Reconfigure instead of adding it again."
     },
     "abort": {
-      "already_configured": "This device is already configured.",
+      "already_configured": "This Tapo/Kasa device is already added. Open the existing integration entry to manage or reconfigure it; adding a second entry can invalidate the DL100 session.",
       "no_devices_found": "No devices are available from this scan; restart setup to try again.",
       "scan_not_started": "No scan is currently running. Restart the integration setup to scan again."
     },
