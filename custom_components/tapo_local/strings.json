@@ -4,10 +4,10 @@
     "step": {
       "user": {
         "title": "Find or add a local TP-Link/Kasa/Tapo device",
-        "description": "Leave the device host blank and enter an IPv4 subnet such as 172.20.0.0/16 to scan it. A /16 may take several minutes. A single IPv4 scan target or default LAN broadcast also works. Or enter a device host to configure it directly. Device control stays local.",
+        "description": "Enter a device host for manual setup, or leave it blank to scan. Leave the discovery target blank to automatically scan enabled Home Assistant interface networks using their actual CIDR subnet masks. For a routed device VLAN enter its CIDR, e.g. 172.20.0.0/16; no separate mask is needed. CIDR scans can take several minutes.",
         "data": {
           "host": "Device IP address or hostname (leave blank to scan)",
-          "scan_target": "Discovery target (IPv4 CIDR, IP, or broadcast)"
+          "scan_target": "Network to scan (optional CIDR or IPv4 address; blank = automatic)"
         }
       },
       "dl100_session": {
@@ -63,14 +63,18 @@
       "unknown": "Unexpected error.",
       "invalid_auth": "The device rejected the supplied credentials.",
       "credentials_hash_unavailable": "The device authenticated locally, but python-kasa did not provide a reusable credential hash. Tapo Local will not store the plaintext password.",
-      "dl100_auth_failed": "Tapo Local could not create a DL100 session. Verify the owner account credentials, Internet access for session authorization, and local reachability to the lock.",
+      "dl100_auth_failed": "DL100 authorization failed at an unidentified step. See Home Assistant logs for the precise stage; existing configuration remains unchanged.",
       "invalid_host": "Enter a valid IP address or hostname, without a URL, port, or path.",
       "device_identity_unavailable": "This entry has no verifiable device identity. The address was not changed to avoid connecting to a different device.",
       "wrong_device": "A different device responded at that address. The existing IP address was not changed.",
       "invalid_scan_target": "Enter an RFC1918 IPv4 address or CIDR from /16 to /32 (for example 172.20.0.0/16), or 255.255.255.255. Wider and public networks are blocked.",
       "scan_failed": "The network scan failed. Check Home Assistant networking and try manual IP setup.",
-      "no_devices_found": "No new supported devices answered. Already configured devices are hidden. Confirm that Home Assistant can reach the VLAN's UDP ports 9999, 20002 and 20004; sleeping devices may require manual IP setup.",
-      "invalid_selection": "Select a device from the current discovery results."
+      "no_devices_found": "No unconfigured Tapo devices answered. Auto mode uses Home Assistant's enabled interface CIDRs; for routed VLANs like 172.20.0.0/16, specify that CIDR directly. Legacy Kasa switches are also checked using TCP 9999.",
+      "invalid_selection": "Select a device from the current discovery results.",
+      "dl100_cloud_login_failed": "DL100 owner-account login failed. Check account credentials, TP-Link cloud availability, and any account verification requirements. Details appear in Home Assistant logs.",
+      "dl100_cloud_device_failed": "DL100 identification failed: the account did not return one identifiable DL100 device. Confirm the account owns the lock and review Home Assistant logs.",
+      "dl100_control_key_failed": "DL100 owner authorization reached the control-key service but no usable control key was issued. Check Home Assistant logs for the HTTP status or error code.",
+      "dl100_local_handshake_failed": "DL100 local encrypted handshake failed. Check that the lock is awake and reachable on TCP port 80; Home Assistant logs identify the failed handshake."
     },
     "abort": {
       "already_configured": "This device is already configured.",

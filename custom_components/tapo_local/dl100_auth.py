@@ -8,6 +8,7 @@ traffic is local to the LAN.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import hashlib
 import http.client
 import json
@@ -24,7 +25,27 @@ SESSION_COOKIE_NAME = "TP_SESSIONID"
 
 
 class DL100ProvisioningError(Exception):
-    """Fresh DLKLAP session establishment failed."""
+    """Fresh DLKLAP session establishment failed, with a safe stage identifier."""
+
+    def __init__(self, message: str, *, stage: str | None = None) -> None:
+        super().__init__(message)
+        self.stage = stage
+
+
+@contextmanager
+def _provision_stage(stage: str):
+    """Classify failures without exposing tokens, credentials or endpoint URLs."""
+    try:
+        yield
+    except DL100ProvisioningError as exc:
+        if not exc.stage:
+            exc.stage = stage
+        raise
+    except (OSError, TimeoutError, http.client.HTTPException, ssl.SSLError) as exc:
+        raise DL100ProvisioningError(
+            f"{stage} connection failed ({type(exc).__name__})", stage=stage
+        ) from exc
+
 
 
 def _sha256(*parts: bytes) -> bytes:
@@ -109,7 +130,13 @@ def _cloud_login(
 
 def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
     if preferred_device_id and preferred_device_id not in {"", "None"}:
-        return preferred_device_id
+        # A TDP device ID is valid, but the IPv4 host previously used as a
+        # fallback here is NOT a TP-Link cloud device ID.
+        try:
+            import ipaddress
+            ipaddress.ip_address(preferred_device_id)
+        except ValueError:
+            return preferred_device_id
 
     status, _, raw = _request(
         "https",
@@ -154,8 +181,10 @@ def establish_session(
 ) -> dict[str, Any]:
     """Establish a fresh owner DLKLAP session and return persistent state."""
     terminal_uuid = (terminal_uuid or str(uuid.uuid4())).upper()
-    token, account_id = _cloud_login(username, password, terminal_uuid)
-    device_id = _resolve_device_id(token, device_id)
+    with _provision_stage("cloud_login"):
+        token, account_id = _cloud_login(username.strip(), password, terminal_uuid)
+    with _provision_stage("cloud_device"):
+        device_id = _resolve_device_id(token, device_id)
 
     local_headers = {
         "Content-Type": "text/plain",
@@ -166,101 +195,109 @@ def establish_session(
     rand4 = os.urandom(4)
     digest_input = (rand4.hex() + account_id).upper().encode("ascii")
     hs0_body = _sha256(digest_input)[:32] + bytes([0])
-    status, _, hs0_raw = _request(
-        "http",
-        host,
-        "/app/handshake0",
-        headers=local_headers,
-        body=hs0_body,
-        timeout=timeout,
-    )
-    if status != 200:
-        raise DL100ProvisioningError(f"DL100 handshake0 returned HTTP {status}")
-    secret = hs0_raw.decode("utf-8", errors="strict").strip()
+    with _provision_stage("handshake0"):
+        status, _, hs0_raw = _request(
+            "http",
+            host,
+            "/app/handshake0",
+            headers=local_headers,
+            body=hs0_body,
+            timeout=timeout,
+        )
+        if status != 200:
+            raise DL100ProvisioningError(f"DL100 handshake0 returned HTTP {status}")
+        secret = hs0_raw.decode("utf-8", errors="strict").strip()
+        if not secret:
+            raise DL100ProvisioningError("DL100 handshake0 returned no challenge")
 
     # Cloud control key. TP-Link uses a private CA on this endpoint.
     ck_body = json.dumps(
         {"secret": secret, "random": rand4.hex().upper()},
         separators=(",", ":"),
     )
-    status, _, ck_raw = _request(
-        "https",
-        "use1-app-server.iot.i.tplinknbu.com",
-        f"/v1/things/{quote(device_id, safe='')}/control-key",
-        headers={
-            "Authorization": f"ut|{token}",
-            "app-cid": f"app:Tapo_Android:{terminal_uuid}",
-            "App-Type": "Tapo_Android",
-            "x-app-name": "Tapo_Android",
-            "UUID": terminal_uuid,
-            "Terminal-Id": terminal_uuid,
-            "x-term-id": terminal_uuid,
-            "Platform": "ANDROID",
-            "X-App-Os": "android",
-            "Content-Type": "application/json",
-        },
-        body=ck_body,
-        timeout=timeout,
-        verify_tls=False,
-    )
-    if status != 200:
-        raise DL100ProvisioningError(f"control-key endpoint returned HTTP {status}")
-    try:
-        ck_response = json.loads(ck_raw)
-    except json.JSONDecodeError as exc:
-        raise DL100ProvisioningError("control-key endpoint returned invalid JSON") from exc
-    ck_obj = ck_response.get("result") or ck_response.get("data") or ck_response
-    control_key = ck_obj.get("controlKey") or ck_obj.get("control_key")
-    if not control_key:
-        code = ck_response.get("error_code") or ck_response.get("code")
-        raise DL100ProvisioningError(f"control-key missing (code={code})")
+    with _provision_stage("control_key"):
+        status, _, ck_raw = _request(
+            "https",
+            "use1-app-server.iot.i.tplinknbu.com",
+            f"/v1/things/{quote(device_id, safe='')}/control-key",
+            headers={
+                "Authorization": f"ut|{token}",
+                "app-cid": f"app:Tapo_Android:{terminal_uuid}",
+                "App-Type": "Tapo_Android",
+                "x-app-name": "Tapo_Android",
+                "UUID": terminal_uuid,
+                "Terminal-Id": terminal_uuid,
+                "x-term-id": terminal_uuid,
+                "Platform": "ANDROID",
+                "X-App-Os": "android",
+                "Content-Type": "application/json",
+            },
+            body=ck_body,
+            timeout=timeout,
+            verify_tls=False,
+        )
+        if status != 200:
+            raise DL100ProvisioningError(f"control-key endpoint returned HTTP {status}")
+        try:
+            ck_response = json.loads(ck_raw)
+        except json.JSONDecodeError as exc:
+            raise DL100ProvisioningError("control-key endpoint returned invalid JSON") from exc
+        ck_obj = ck_response.get("result") or ck_response.get("data") or ck_response
+        if not isinstance(ck_obj, dict):
+            raise DL100ProvisioningError("control-key response was not a JSON object")
+        control_key = ck_obj.get("controlKey") or ck_obj.get("control_key")
+        if not control_key:
+            code = ck_response.get("error_code") or ck_response.get("code")
+            raise DL100ProvisioningError(f"control-key missing (code={code})")
 
     # Handshake 1
     ck = str(control_key).upper().encode("ascii")
     lmk = _sha256(ck)
     local_seed = os.urandom(16)
     hs1_body = local_seed + _sha256(local_seed, ck)
-    status, hs1_headers, hs1_raw = _request(
-        "http",
-        host,
-        "/app/handshake1",
-        headers=local_headers,
-        body=hs1_body,
-        timeout=timeout,
-    )
-    if status != 200:
-        raise DL100ProvisioningError(f"DL100 handshake1 returned HTTP {status}")
-    if len(hs1_raw) < 48:
-        raise DL100ProvisioningError("DL100 handshake1 response was too short")
+    with _provision_stage("handshake1"):
+        status, hs1_headers, hs1_raw = _request(
+            "http",
+            host,
+            "/app/handshake1",
+            headers=local_headers,
+            body=hs1_body,
+            timeout=timeout,
+        )
+        if status != 200:
+            raise DL100ProvisioningError(f"DL100 handshake1 returned HTTP {status}")
+        if len(hs1_raw) < 48:
+            raise DL100ProvisioningError("DL100 handshake1 response was too short")
 
-    set_cookie = hs1_headers.get("set-cookie", "")
-    cookie = next(
-        (
-            part.strip()
-            for part in set_cookie.split(";")
-            if part.strip().startswith(f"{SESSION_COOKIE_NAME}=")
-        ),
-        None,
-    )
-    if not cookie:
-        raise DL100ProvisioningError("DL100 handshake1 returned no TP_SESSIONID")
+        set_cookie = hs1_headers.get("set-cookie", "")
+        cookie = next(
+            (
+                part.strip()
+                for part in set_cookie.split(";")
+                if part.strip().startswith(f"{SESSION_COOKIE_NAME}=")
+            ),
+            None,
+        )
+        if not cookie:
+            raise DL100ProvisioningError("DL100 handshake1 returned no TP_SESSIONID")
 
-    remote_seed = hs1_raw[:16]
-    server_proof = hs1_raw[16:48]
-    if _sha256(local_seed, remote_seed, lmk) != server_proof:
-        raise DL100ProvisioningError("DL100 handshake1 server proof mismatch")
+        remote_seed = hs1_raw[:16]
+        server_proof = hs1_raw[16:48]
+        if _sha256(local_seed, remote_seed, lmk) != server_proof:
+            raise DL100ProvisioningError("DL100 handshake1 server proof mismatch")
 
     # Handshake 2
-    status, _, _ = _request(
-        "http",
-        host,
-        "/app/handshake2",
-        headers={**local_headers, "Cookie": cookie},
-        body=_sha256(remote_seed, local_seed, lmk),
-        timeout=timeout,
-    )
-    if status != 200:
-        raise DL100ProvisioningError(f"DL100 handshake2 returned HTTP {status}")
+    with _provision_stage("handshake2"):
+        status, _, _ = _request(
+            "http",
+            host,
+            "/app/handshake2",
+            headers={**local_headers, "Cookie": cookie},
+            body=_sha256(remote_seed, local_seed, lmk),
+            timeout=timeout,
+        )
+        if status != 200:
+            raise DL100ProvisioningError(f"DL100 handshake2 returned HTTP {status}")
 
     iv_full = _sha256(b"iv", local_seed, remote_seed, lmk)
     seq = int.from_bytes(iv_full[28:32], "big") & 0x7FFFFFFF

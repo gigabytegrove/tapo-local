@@ -13,7 +13,7 @@ import ipaddress
 import json
 import logging
 import socket
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from .const import SUPPORTED_LEGACY_DEVICE_TYPES, SUPPORTED_SMART_FAMILIES
@@ -181,6 +181,38 @@ async def _listen(
             discovered[host] = candidate
 
 
+async def _tcp_probe_legacy(
+    host: str, *, timeout: float = 0.45
+) -> dict[str, str] | None:
+    """Probe legacy Kasa TCP/9999 where UDP discovery is disabled.
+
+    Require a valid framed XOR get_sysinfo response before accepting a host.
+    Connections are bounded and discarded immediately after a read-only query.
+    """
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, 9999), timeout=timeout
+        )
+    except (OSError, TimeoutError):
+        return None
+    try:
+        encrypted = _xor_encrypt(_LEGACY_REQUEST)
+        writer.write(len(encrypted).to_bytes(4, "big") + encrypted)
+        await asyncio.wait_for(writer.drain(), timeout)
+        raw_length = await asyncio.wait_for(reader.readexactly(4), timeout)
+        length = int.from_bytes(raw_length, "big")
+        if not 0 < length <= 65535:
+            return None
+        packet = await asyncio.wait_for(reader.readexactly(length), timeout)
+        return _candidate_from_packet(packet, 9999, host)
+    except (OSError, TimeoutError, asyncio.IncompleteReadError):
+        return None
+    finally:
+        writer.close()
+        with contextlib.suppress(OSError, TimeoutError):
+            await asyncio.wait_for(writer.wait_closed(), timeout)
+
+
 async def _send(
     sock: socket.socket, host: str, probes: tuple[tuple[int, bytes], ...]
 ) -> int:
@@ -243,12 +275,36 @@ async def async_scan_local_devices(
                         raise OSError("Unable to send UDP discovery packets")
                     return sorted(discovered.values(), key=lambda x: (x["model"], x["host"]))
 
-            for index, host in enumerate(targets, start=1):
-                sent += await _send(sock, str(host), probes)
-                if index % HOST_BATCH_SIZE == 0:
-                    if progress_callback:
-                        progress_callback(min(0.98, 0.98 * index / total))
-                    await asyncio.sleep(HOST_BATCH_SIZE / HOSTS_PER_SECOND)
+            pending: set[asyncio.Task[dict[str, str] | None]] = set()
+            async def collect(tasks: Iterable[asyncio.Task[dict[str, str] | None]]) -> None:
+                for task in tasks:
+                    candidate = task.result()
+                    if candidate and len(discovered) < MAX_CANDIDATES:
+                        discovered.setdefault(candidate["host"], candidate)
+
+            try:
+                for index, host in enumerate(targets, start=1):
+                    address = str(host)
+                    sent += await _send(sock, address, probes)
+                    if address != broadcast_target and address not in discovered:
+                        pending.add(asyncio.create_task(_tcp_probe_legacy(address)))
+                    if len(pending) >= 64:
+                        done, pending = await asyncio.wait(
+                            pending, return_when=asyncio.FIRST_COMPLETED
+                        )
+                        await collect(done)
+                    if index % HOST_BATCH_SIZE == 0:
+                        if progress_callback:
+                            progress_callback(min(0.98, 0.98 * index / total))
+                        await asyncio.sleep(HOST_BATCH_SIZE / HOSTS_PER_SECOND)
+                if pending:
+                    done, pending = await asyncio.wait(pending)
+                    await collect(done)
+            finally:
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
             if not sent:
                 raise OSError("Unable to send UDP discovery packets")
             if progress_callback:
@@ -264,3 +320,54 @@ async def async_scan_local_devices(
                 await reader
     finally:
         sock.close()
+
+
+async def async_detect_local_targets(hass: Any) -> list[str]:
+    """Respect Home Assistant's enabled network interfaces and their real masks.
+
+    A routed VLAN not present on any HA interface cannot be inferred safely:
+    enter that VLAN's CIDR explicitly instead of inventing a network prefix.
+    """
+    from homeassistant.components import network
+
+    adapters = await network.async_get_adapters(hass)
+    candidates: list[tuple[bool, str]] = []
+    seen: set[str] = set()
+    for adapter in adapters:
+        if not adapter.get("enabled"):
+            continue
+        for info in adapter.get("ipv4", []):
+            try:
+                target = validate_discovery_target(
+                    f"{info['address']}/{int(info['network_prefix'])}"
+                )
+            except (ValueError, KeyError, TypeError):
+                continue
+            if target not in seen:
+                candidates.append((bool(adapter.get("default")), target))
+                seen.add(target)
+    # A passive fallback is preferable to guessing a /16 from one host.
+    candidates.sort(key=lambda x: (not x[0], x[1]))
+    return [target for _, target in candidates[:3]] or [DEFAULT_DISCOVERY_TARGET]
+
+
+async def async_scan_selected_networks(
+    hass: Any,
+    target: str = "",
+    *,
+    progress_callback: Callable[[float], Any] | None = None,
+) -> list[dict[str, str]]:
+    """Auto-detect the HA adapter CIDRs or scan an explicitly supplied CIDR."""
+    targets = [validate_discovery_target(target)] if target.strip() else (
+        await async_detect_local_targets(hass)
+    )
+    by_host: dict[str, dict[str, str]] = {}
+    for index, subnet in enumerate(targets):
+        def report(progress: float, *, _index: int = index) -> None:
+            if progress_callback:
+                progress_callback((_index + progress) / len(targets))
+        for item in await async_scan_local_devices(
+            subnet, progress_callback=report
+        ):
+            by_host[item["host"]] = item
+    return sorted(by_host.values(), key=lambda x: (x["model"], x["host"]))
