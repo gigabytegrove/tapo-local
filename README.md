@@ -1,305 +1,179 @@
-<p align="center"><img src="https://raw.githubusercontent.com/gigabytegrove/tapo-local/main/custom_components/tapo_local/brand/logo.png" alt="Tapo Local" width="620"></p>
+<p align="center">
+  <a href="https://github.com/gigabytegrove/tapo-local">
+    <img src="https://raw.githubusercontent.com/gigabytegrove/tapo-local/main/custom_components/tapo_local/brand/logo.png" alt="Tapo Local logo" width="520">
+  </a>
+</p>
 
-# Tapo Local
+<h1 align="center">Tapo Local</h1>
+<p align="center">Control supported TP-Link Kasa and Tapo devices from Home Assistant, mostly over your home network.</p>
 
-[![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=gigabytegrove&repository=tapo-local&category=integration)
-[![GitHub stars](https://img.shields.io/github/stars/gigabytegrove/tapo-local?style=flat&label=Stars)](https://github.com/gigabytegrove/tapo-local/stargazers)
-[![GitHub repository](https://img.shields.io/badge/GitHub-Repository-181717?logo=github&logoColor=white)](https://github.com/gigabytegrove/tapo-local)
-[![Open issues](https://img.shields.io/github/issues/gigabytegrove/tapo-local)](https://github.com/gigabytegrove/tapo-local/issues)
-[![Latest GitHub release](https://img.shields.io/github/v/release/gigabytegrove/tapo-local?label=Release)](https://github.com/gigabytegrove/tapo-local/releases)
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-0070BA?logo=paypal&logoColor=white)](https://paypal.me/gigabytegrove)
+<p align="center">
+  <a href="https://github.com/gigabytegrove/tapo-local"><img alt="GitHub repository" src="https://img.shields.io/badge/GitHub-Repository-181717?logo=github&logoColor=white"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/gigabytegrove/tapo-local?label=Stars"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/forks"><img alt="GitHub forks" src="https://img.shields.io/github/forks/gigabytegrove/tapo-local?label=Forks"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/gigabytegrove/tapo-local?label=Issues"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/releases/latest"><img alt="Latest public release" src="https://img.shields.io/github/v/release/gigabytegrove/tapo-local?label=Release"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/blob/main/LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/github/license/gigabytegrove/tapo-local?label=License"></a>
+  <a href="https://paypal.me/gigabytegrove"><img alt="Support on PayPal" src="https://img.shields.io/badge/Support-PayPal-0070BA?logo=paypal&logoColor=white"></a>
+</p>
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=gigabytegrove&repository=tapo-local&category=integration"><img alt="Add repository to HACS" src="https://my.home-assistant.io/badges/hacs_repository.svg"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/actions/workflows/validate.yml?query=branch%3Amain"><img alt="Main branch validation" src="https://github.com/gigabytegrove/tapo-local/actions/workflows/validate.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/gigabytegrove/tapo-local/actions/workflows/repository-health.yml?query=branch%3Amain"><img alt="Main branch repository health" src="https://github.com/gigabytegrove/tapo-local/actions/workflows/repository-health.yml/badge.svg?branch=main"></a>
+</p>
 
-Tapo Local is a Home Assistant custom integration for **local-first TP-Link, Kasa, and Tapo devices**.
+**Useful links:** [Install](#install-with-hacs) · [Find a device's IP](docs/FIND_DEVICE_IP.md) · [Supported devices](SUPPORTED_DEVICES.md) · [Recent release notes](CHANGELOG.md) · [Report a problem](https://github.com/gigabytegrove/tapo-local/issues) · [Help and support](SUPPORT.md) · [Source code](https://github.com/gigabytegrove/tapo-local) · [Support development](https://paypal.me/gigabytegrove)
 
-It is built for people who want direct LAN control, deterministic protocol selection, and clear separation between local device access and TP-Link cloud services.
+> **Before you begin:** Tapo Local is a community-made Home Assistant integration, not an official TP-Link product. It supports specific device types, not every device sold under the Kasa or Tapo names. Most controls work directly on your network; the **Tapo DL100 smart lock needs your Tapo owner's account for initial setup and to renew an expired encrypted session**. See [DL100 information](#tapo-dl100-smart-locks) before adding a lock.
 
-> Home Assistant integration domain: **tapo_local**. The domain is intentionally unchanged so existing installations upgrade safely.
+## What can I use it for?
 
-## Installation
+You can add compatible smart switches, plugs, lights, fans, and sensors to Home Assistant. Supported locks appear as normal Home Assistant lock entities. Your Home Assistant automations can then use those entities.
 
-### Option 1: HACS custom repository
+The device model and firmware matter. See the [supported-device list](SUPPORTED_DEVICES.md) for models and what has actually been tested with this integration. A model listed as supported by the underlying python-kasa library is **not** the same as a model tested here on physical hardware.
 
-HACS is the recommended installation method.
+## Install with HACS
 
-1. Open **HACS** in Home Assistant.
-2. Open the **three-dot menu** and choose **Custom repositories**.
-3. Add:
-   - **Repository:** `https://github.com/gigabytegrove/tapo-local`
-   - **Type:** `Integration`
-4. Search HACS for **Tapo Local**.
-5. Select **Download**.
-6. Restart Home Assistant.
-7. Open **Settings -> Devices & services -> Add integration**.
-8. Search for **Tapo Local**.
-9. Leave the device address blank and submit to scan for supported devices, or enter its IP address/hostname to set it up manually.
-10. Select a discovered device and complete any required authorization.
+**HACS is the recommended way to install and update Tapo Local.** You need [Home Assistant](https://www.home-assistant.io/) and [HACS](https://www.hacs.xyz/) installed first.
 
-If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, Tapo Local will request the TP-Link account credentials authorized for that device during initial setup. For the DL100 specifically, the owner credentials are retained in Home Assistant private storage so Tapo Local can automatically mint a fresh DLKLAP session when the lock invalidates the old one.
+1. In Home Assistant, open **HACS**.
+2. Open HACS's **three-dot menu** and select **Custom repositories**.
+3. Enter `https://github.com/gigabytegrove/tapo-local` as the repository address.
+4. Select **Integration** as the category and add the repository.
+5. Find **Tapo Local** in HACS and select **Download**.
+6. **Restart Home Assistant** to load the integration.
+7. Go to **Settings → Devices & services → Add integration**.
+8. Search for **Tapo Local** and open it.
+9. Choose [automatic discovery](#find-devices-automatically) or [manual setup](#add-a-device-by-ip-address).
 
-### Option 2: Manual installation
+You can also use the [Add to HACS badge](https://my.home-assistant.io/redirect/hacs_repository/?owner=gigabytegrove&repository=tapo-local&category=integration) above to open the repository in Home Assistant.
 
-1. Download or clone this repository.
-2. Copy the integration directory:
+### Install without HACS
 
-   ```text
-   custom_components/tapo_local
-   ```
+1. Open the [latest public release](https://github.com/gigabytegrove/tapo-local/releases/latest) on GitHub and download its **Source code (zip)**.
+2. Unzip it on your computer.
+3. Copy the **entire** `custom_components/tapo_local` folder into your Home Assistant configuration folder. The final location inside Home Assistant must be `/config/custom_components/tapo_local/`, containing `manifest.json` and the other integration files.
+4. Restart Home Assistant.
+5. Follow steps 7–9 above to add a device.
 
-   into your Home Assistant configuration directory so the final path is:
+If you use Home Assistant Container, copy the folder into the host directory mounted as `/config` inside the container. Do not copy it into a temporary folder inside a running container.
 
-   ```text
-   /config/custom_components/tapo_local
-   ```
+### Python dependency: no manual installation needed
 
-3. Restart Home Assistant.
-4. Open **Settings -> Devices & services -> Add integration**.
-5. Search for **Tapo Local** and leave the address blank to scan the LAN, or enter the device IP address/hostname.
+Home Assistant installs Tapo Local's required `python-kasa>=0.11.0.1` dependency automatically from the integration manifest. **Do not run `pip install` inside a normal Home Assistant installation.** For a separate developer Python environment, see [Contributing](CONTRIBUTING.md).
 
-For Home Assistant Container installations, the integration directory must be inside the configuration volume mounted at `/config`.
+## Find devices automatically
 
-### python-kasa dependency
+1. Go to **Settings → Devices & services → Add integration → Tapo Local**.
+2. Leave **Device IP address or hostname** empty.
+3. Leave **Network to scan** empty to check the networks Home Assistant can identify on its own.
+4. Select **Submit** and let the scan finish.
+5. Select a found device. Devices already added to Tapo Local are hidden from the list.
 
-Tapo Local requires **python-kasa redacted.invalid or newer** for the supported Kasa/Tapo device families.
+**Devices on a separate VLAN or network?** If Home Assistant cannot find that network automatically, put its **network address in CIDR form** in the **Network to scan** field. For example, `172.20.0.0/16` includes the subnet information; **you do not need to enter a subnet mask separately**.
 
-Normal Home Assistant users **do not need to install python-kasa manually**. Tapo Local declares the dependency in `manifest.json`, and Home Assistant's requirements manager installs it automatically when the integration loads.
+A large network takes longer to scan. A `/16` contains 65,534 usable device addresses and can take several minutes. Scanning uses local network discovery requests and checks legacy Kasa devices on TCP port 9999. It does **not** connect your devices to your TP-Link account or add them automatically. Firewalls, sleeping devices, or unsupported protocols may prevent a device from appearing.
 
-The integration declares this requirement:
+## Add a device by IP address
 
-```text
-python-kasa>=redacted.invalid
-```
+If discovery misses a device, you can add it by its IP address. **Don't know the IP?** Follow our step-by-step guide: **[How to find your Tapo or Kasa device's IP address](docs/FIND_DEVICE_IP.md)**. It explains what an IP and MAC address are, where to find your router's connected-device list, and how to match a MAC address to the correct IP—even when the router shows the device as **Unknown**.
 
-The cryptography library is supplied by Home Assistant and python-kasa; it is not separately pinned in the integration manifest.
+Once you know the address, return to **Add integration → Tapo Local**. Enter it in **Device IP address or hostname**, leave the network scan field empty, and follow the prompts.
 
-For development, protocol testing, or a standalone Python environment outside Home Assistant, install the same pinned dependency with:
+This is often easier than scanning a separate VLAN. Home Assistant still needs permission to reach that device over your network. Never guess an IP address or delete a working entry just to find it.
 
-```bash
-python3 -m pip install 'python-kasa[speedups]==redacted.invalid' 'cryptography>=1.9'
-```
+## Tapo DL100 smart locks
 
-Do **not** manually `pip install` python-kasa into a normal Home Assistant installation. Home Assistant should own and manage the integration's Python requirements.
+The DL100 is different from a normal Kasa switch.
 
-### Add your first device
+- **During setup:** Tapo Local asks for the original **owner's** Tapo account credentials. It briefly contacts TP-Link to create an encrypted connection to the lock. A shared account may not have permission to authorize that connection.
+- **During normal use:** Home Assistant reads the lock and sends lock/unlock commands over your local network.
+- **If the encrypted session expires:** Home Assistant may use the owner's saved credentials to contact TP-Link again and renew it automatically. The credentials and session material are stored privately by Home Assistant.
+- **If you have two or more DL100s:** Tapo Local checks the locks registered to the owner account. When it cannot match the new lock by its identity, it asks you to select the correct lock by its name and the end of its device ID. **Do not choose a different lock just to get past setup.**
+- **If a DL100 is already working:** Do not delete or add it again. Leave that entry in place.
+- **If you cannot find the lock's IP address:** Use the [device IP lookup guide](docs/FIND_DEVICE_IP.md). The Wi-Fi MAC address (when available) is the one to match against your router—not a Bluetooth address or setup code.
 
-After installation and restart:
+A working DL100 still depends on TP-Link's authorization service whenever a **new** encrypted session is needed. We do not claim that session creation works without the cloud, or that every firmware/version has been tested on real hardware.
 
-1. Go to **Settings -> Devices & services**.
-2. Select **Add integration**.
-3. Choose **Tapo Local**.
-4. Leave **Device IP address or hostname** blank, enter the preferred **Discovery target** (for example `172.20.0.0/16`), and submit to scan; alternatively enter a device host for manual setup.
-5. When scanning completes, select a newly found device. Previously registered Tapo Local devices are hidden and counted. Complete local authentication if required.
+### Fix DL100 setup errors
 
-Tapo Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
-
-### LAN auto-discovery
-
-Tapo Local provides **on-demand local network discovery** in Home Assistant's Add integration flow. Leave **Device host** empty to discover devices. **Leave Discovery target blank** to automatically derive CIDR ranges from Home Assistant's enabled network adapters (including the real subnet mask). For devices on a **routed VLAN**, specify that VLAN's exact CIDR (for example `172.20.0.0/16`); an unrelated remote VLAN cannot be determined from Home Assistant's local interface mask. No separate subnet-mask entry is required. The progress screen reports scanning activity and lists device names, models and IPs. Devices previously configured in Tapo Local are **hidden** by stable device ID or saved IP, with a count of matches. Selecting a new device invokes the original protocol and authentication verification.
-
-**Network behavior:** The default target `255.255.255.255` runs a brief LAN broadcast scan. A private IPv4 CIDR such as `172.20.0.0/16` sends local UDP queries to **every usable address** in that CIDR, rather than relying on cross-VLAN broadcasts. The integration uses XOR UDP 9999, TDP UDP 20002/20004, and bounded read-only XOR **TCP 9999** probes to detect legacy switches that do not respond to UDP. It caps UDP traffic at **256 hosts per second** in 32-host batches, allows at most 64 concurrent TCP identification tasks, gathers replies during the scan, and retains at most 512 candidates. A `/16` includes 65,534 usable addresses and can take several minutes. Wider or public networks are rejected. A single private IPv4 address and directed-broadcast targets remain valid for targeted scans.
-
-**Important:** The scan can only find devices that reply to these discovery packets. Home Assistant must have permitted UDP connectivity to the target VLAN (including return traffic). Sleeping DL100 locks, firewalled hosts, and devices with discovery disabled may be missed; add those by IP address manually. CIDR discovery does not use TP-Link cloud, automatically register devices, alter existing entries, or perform TCP host sweeps. This is not continuous/background discovery.
-
-### Multiple DL100 locks on one TP-Link owner account
-
-If your owner account contains more than one DL100, Tapo Local now authenticates the owner **before** beginning the local DLKLAP handshake and retrieves the owned lock list. Locks already configured in Tapo Local are omitted. If the local TDP ID matches a remaining owned cloud device ID exactly, that lock is used automatically. Otherwise, select the correct DL100 by its name in the Tapo app and verify the short ID suffix shown in the selection form before authorizing it.
-
-For example, with a working Garage Door Lock entry already installed, adding a second DL100 at a different IP does **not** repeat authorization against the existing garage lock ID. The flow refuses to guess based on account list order; no new session is requested until you confirm the lock. Existing configurations, local sessions, and entity IDs are preserved.
-
-### DL100 setup diagnostics
-
-DL100 setup needs owner-account authorization for a fresh DLKLAP session. When it fails, the UI now separates owner login, cloud device identity, control-key issuance and local handshake failures instead of returning one generic message. Home Assistant logs record the failing step and a safe HTTP status/error code where available, without dumping passwords, tokens or session material.
-
-If the local discovery response omits a DL100 device ID, the integration no longer substitutes its IP address as the cloud device ID: it resolves the lock through the authenticated device list, and refuses to guess when multiple locks make the match ambiguous.
-
-Existing devices should not be re-added when testing discovery or troubleshooting DL100 account authorization: Tapo Local now rejects an already configured IP/stable device identity before attempting cloud bootstrap. For previously added locks, use their existing entry and **Reconfigure** if the IP has changed. A cloud control-key response with code `15033` indicates an owner/challenge mismatch; confirm that the account is the original owner and that no competing controller has started another DL100 handshake.
-
-### Why Home Assistant shows separate entry sections
-
-Tapo Local currently uses **one configuration entry per device**. Home Assistant therefore shows an integration entry for each registered switch or lock, each with its own credentials, local protocol, options, and lifecycle. The common Tapo Local integration header groups the devices by integration, but its entry cards are intentionally separate. Migrating existing entries into one hub would require a tested state/session/device/entity migration, so an update must not silently merge or delete these working entries.
-
-## Change a device IP address
-
-If a device receives a different DHCP address or moves to another subnet, **do not delete and re-add it**.
-
-1. Open **Settings → Devices & services → Tapo Local** in Home Assistant.
-2. Open the menu for the affected integration entry and select **Reconfigure**.
-3. Replace the prefilled **New IP address or hostname** field with the device's new address and submit.
-4. Tapo Local verifies that the new address belongs to the same device, updates that entry, and reloads it. Existing entities, history, automations and polling settings remain intact.
-
-If the device cannot be reached or its identity cannot be verified, Tapo Local keeps the old address and displays an error instead of silently connecting to another device. Authenticated Tapo devices reuse existing locally stored authentication. For DL100, if the saved encrypted DLKLAP session is rejected or missing, Tapo Local first attempts owner-authorized renewal using credentials already saved privately in Home Assistant. If the credentials are unavailable or renewal fails, the reconfigure flow displays a dedicated owner-account form; it does not require a factory reset or manual session-import JSON. Fresh authorization briefly contacts TP-Link services, while normal lock status and commands remain on the LAN. The original IP and saved session are retained until a fresh LAN verification succeeds.
-
-## What Tapo Local supports
-
-Tapo Local uses two local backends:
-
-- **python-kasa redacted.invalid** for supported Kasa/Tapo plugs, switches, dimmers, bulbs, light strips, power strips, fans, hubs, and hub-connected sensors.
-- A **native DLKLAP backend** for the Tapo DL100 smart lock.
-
-The integration maps device capabilities into native Home Assistant entities instead of exposing everything as generic controls.
-
-| Device capability | Home Assistant entity |
+| What Home Assistant says | What to try |
 |---|---|
-| Plug / relay / outlet | switch |
-| Bulb / dimmer / light strip | light |
-| Fan speed | fan |
-| Motion / contact / leak / low battery | binary_sensor |
-| Temperature / humidity / battery / energy / diagnostics | sensor |
-| Choice settings | select |
-| Numeric settings | number |
-| Actions | button |
-| DL100 deadbolt | lock |
+| Owner-account login failed | Check the owner's Tapo email/password and that Home Assistant can reach TP-Link's services. |
+| Cannot identify the lock | Make sure you are using the owner account. When asked, select the actual lock you are adding. |
+| Control key not issued | Look at the Tapo Local message in **Settings → System → Logs**. If a numeric error code is shown, include that **code only** in a bug report; never post a token, password, or full cloud response. |
+| Control key rejected (15033) | This can mean an owner-account or handshake mismatch. Check that you selected the correct lock and did not set up an existing lock a second time. |
+| Lock cannot be reached | Check its IP address, that it is awake, and that Home Assistant can reach TCP port 80 on the lock's network. |
 
-Power strips are expanded into **individual child outlet devices/entities**. Hubs are expanded into **child sensor devices/entities**.
+**Please do not factory-reset or remove a working lock just to retry authorization.** See [How to get help](#get-help) for what to report safely.
 
-See [SUPPORTED_DEVICES.md](SUPPORTED_DEVICES.md) for the current device matrix.
+## Change a device's IP address
 
-## Hardware verified by this project
+If your router changes a device's IP address, you do **not** have to remove it from Home Assistant. If you do not know the new IP address, follow the [beginner IP-address lookup guide](docs/FIND_DEVICE_IP.md) first.
 
-These models have been tested directly with Tapo Local hardware:
+1. Open **Settings → Devices & services → Tapo Local**.
+2. Find the entry for that device, open its menu, and select **Reconfigure**.
+3. Enter the new IP address and submit.
+4. Tapo Local checks the device's identity before saving the change. If the device cannot be verified, the old address stays in place.
 
-| Model | Local transport | Verified behavior |
-|---|---|---|
-| Kasa KS200 | IOT/XOR TCP 9999 | Local relay control, status, LED, diagnostics |
-| Kasa KS200M | IOT/XOR TCP 9999 | Local relay control, PIR/motion features, LED, diagnostics |
-| Tapo DL100 | DLKLAP HTTP 80 | Local state, battery, lock, unlock, persistent local session |
+This is also the right way to move an existing DL100 to a new address. Your existing entities and automations should keep their identities because you are editing the same entry, not starting over.
 
-The DL100 lock/unlock path has been physically verified against real hardware.
+### Why are there several sections on the integration page?
 
-## Deterministic connection policy
+Home Assistant shows **one entry for each device** because that is how Tapo Local currently saves device configurations. For example, three switches and a lock appear under the same Tapo Local integration, but each has its own entry section. **This is expected in the current version.** Combining them would require a separate tested migration; deleting entries to make the page tidier could break entity history and lock sessions.
 
-Tapo Local does not use a generic "try every protocol until something works" runtime.
+## Update Tapo Local
 
-### Legacy Kasa IOT devices
+1. In HACS, open **Tapo Local** and install the available update.
+2. Restart Home Assistant.
+3. Open **Settings → Devices & services → Tapo Local** to check the integration version and your existing entries.
 
-Older Kasa devices are connected using an explicit local XOR configuration. python-kasa reads the device sysinfo and specializes it into the correct plug, wall-switch, dimmer, strip, bulb, or light-strip implementation.
+Keep your working configuration entries. If you installed manually, replace only the `custom_components/tapo_local` code with the files from the latest release, then restart Home Assistant. Make a Home Assistant backup before changing integrations, particularly when you have a working smart-lock session.
 
-~~~text
-device family: IOT.SMARTPLUGSWITCH
-encryption:    XOR
-transport:     TCP/9999
-~~~
+## Supported device types
 
-No TP-Link account credentials are required for this path.
-
-### Modern Kasa/Tapo SMART devices
-
-For newer local SMART devices, Tapo Local uses targeted local TDP discovery to read the device-advertised family and encryption parameters. Supported AES/KLAP devices then request the account credentials authorized for that device **during initial setup only**.
-
-Those credentials are used locally against the device. Tapo Local then stores python-kasa's protocol-specific **credential hash** in Home Assistant private storage and removes the hash from the normal config entry after the first successful runtime setup.
-
-Tapo Local does not retain the plaintext password.
-
-Supported SMART families currently include:
-
-~~~text
-SMART.KASAPLUG
-SMART.KASASWITCH
-SMART.KASAHUB
-SMART.TAPOPLUG
-SMART.TAPOBULB
-SMART.TAPOSWITCH
-SMART.TAPOHUB
-~~~
-
-### Tapo DL100
-
-Released python-kasa redacted.invalid does not include the DL100 DLKLAP lock protocol, so Tapo Local provides its own DLKLAP backend.
-
-DL100 setup is automatic. After the lock is identified locally, Tapo Local asks for the TP-Link/Tapo **owner account** credentials and performs the complete DLKLAP session-establishment flow itself:
-
-1. TP-Link cloud login obtains the account token and account ID.
-2. Tapo Local performs local `handshake0` against the DL100.
-3. TP-Link's control-key service mints the per-session DLKLAP `controlKey`.
-4. Tapo Local completes local `handshake1` / `handshake2`.
-5. The resulting encrypted LAN session is stored privately in Home Assistant.
-
-Normal runtime behavior remains LAN-local:
-
-- getLockStatus
-- getDeviceRunningInfo
-- setLockStatus
-- persistent DLKLAP sequence handling
-- physical lock/unlock state verification
-
-If the DL100 later rejects the cached session with HTTP 403 or the session can no longer decrypt responses, Tapo Local automatically performs the provisioning sequence again and retries the operation once. No manual session JSON import is required for normal DL100 setup or renewal.
-
-The DL100 does not support fully local DLKLAP session creation. You enter the owner account credentials once in Home Assistant; Tapo Local stores them privately so you are not asked again. Normal status, lock, and unlock actions are sent directly from Home Assistant to the DL100 over the LAN. If the DL100 later invalidates its session, Home Assistant may briefly use the stored credentials to renew that session automatically in the background.
-
-## Home Assistant entity behavior
-
-Tapo Local consumes python-kasa's public Device.features interface and maps features into Home Assistant.
-
-Specialized mappings are used when they provide a better HA experience:
-
-- brightness/color temperature/HSV -> native light
-- fan speed -> native fan
-- strip outlets -> individual child switch devices
-- hub sensors -> child sensor/binary-sensor devices
-- KS200M PIR -> motion/configuration entities
-- DL100 -> native lock
-
-Additional compatible python-kasa features flow into generic sensor, binary sensor, switch, number, select, and button entities.
-
-## Local-first policy
-
-Tapo Local is designed around LAN device control.
-
-- Direct device IP/hostname access
-- No cloud control fallback for normal device commands
-- No generic protocol guessing at runtime
-- No helper daemon or sidecar
-- No manually managed pip install
-- Modern SMART-device plaintext credentials are not retained; DL100 owner credentials are retained only in Home Assistant private storage because DLKLAP session renewal requires them
-- Credential hashes and DL100 session material are stored privately
-- Sensitive session/authentication material is redacted from diagnostics
-
-For authenticated SMART devices other than DL100, TP-Link account credentials are used to authenticate **to the local device during setup**. The DL100 is different: its verified DLKLAP protocol requires minimal TP-Link cloud round-trips to mint a fresh session control key. Normal DL100 polling and lock/unlock commands remain local.
-
-## Networking
-
-Tapo Local can work across routed VLANs because devices are addressed directly.
-
-| Device family | Typical local transport |
+| Type | What Home Assistant can show |
 |---|---|
-| Legacy Kasa IOT | TCP 9999 XOR |
-| Modern Kasa/Tapo SMART | HTTP/HTTPS using device-advertised AES/KLAP parameters |
-| Tapo DL100 | HTTP 80 DLKLAP |
+| Compatible plugs and wall switches | On/off switches |
+| Compatible bulbs, strips, and dimmers | Light controls |
+| Supported fan controls | Fan controls |
+| Supported hubs and child sensors | Motion, contact, leak, temperature, humidity and battery information |
+| Tapo DL100 | Lock control, lock status and battery information |
 
-Firewalls must permit Home Assistant to reach the device on its required local port.
+The currently documented hands-on test models are **KS200, KS200M, and DL100**. Support for other devices depends on their hardware revision, local communication protocol, and which features Tapo Local can map into Home Assistant. See the [full device list](SUPPORTED_DEVICES.md).
 
-## Security and privacy
+**Not currently offered as first-class platforms:** cameras, video doorbells, robot vacuums, thermostat/climate control, and live button-press events from S200B/S200D.
 
-Tapo Local treats device authentication material as sensitive.
+## Privacy and network use
 
-- DL100 owner credentials, terminal UUID, device ID, seeds, LMK, cookies, and sequence state live in Home Assistant private storage.
-- Modern Kasa/Tapo plaintext credentials are used only for initial local verification.
-- The reusable protocol credential hash is moved into Home Assistant private storage.
-- Diagnostics redact credential hashes, cookies, keys, seeds, device IDs, MAC addresses, aliases, and location fields.
+- Normal device status and control commands travel directly between Home Assistant and your devices.
+- Local discovery does not send your login details to scanned devices.
+- Supported modern SMART devices authenticate locally; their reusable password-derived protocol data is stored privately, not the plaintext password.
+- **DL100 exception:** the owner's credentials are retained privately because that lock needs TP-Link cloud access when a new encrypted session must be authorized.
+- Tapo Local does not use a cloud-control fallback for normal device commands.
+- Use your router/firewall to permit Home Assistant to reach only the device networks and local ports it needs.
 
-## Scope and limitations
+For maintainers: the original Home Assistant integration domain is `tapo_local`, and it remains unchanged for upgrades. The underlying device protocols and architecture are documented in [Supported devices](SUPPORTED_DEVICES.md) and the source code. Third-party dependencies and licensing are in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-Tapo Local currently focuses on device classes that map cleanly to Home Assistant local-control entities.
+## Get help
 
-Not yet implemented as first-class platforms:
+**Something isn't working?** Check [SUPPORT.md](SUPPORT.md) for a short checklist, then [open a GitHub issue](https://github.com/gigabytegrove/tapo-local/issues/new/choose). Include the Tapo Local version, Home Assistant version, exact device model, and what you did before the error.
 
-- Tapo/Kasa cameras
-- Tapo doorbells
-- robot vacuums
-- thermostat/climate devices
-- live button-press event streams for S200B/S200D
+**Do not post** passwords, authorization tokens, DL100 session files, HomeKit setup codes, device IDs, serial numbers, or unredacted Home Assistant diagnostic exports. If you are unsure, report the visible error and numeric code first.
 
-Those device families may be supported by python-kasa, but Tapo Local does not advertise them until their Home Assistant platform behavior is implemented properly.
+Feature suggestions and code contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for the correct channels.
 
-## Dependency relationship
+## Development and releases
 
-Tapo Local depends on [python-kasa](https://github.com/python-kasa/python-kasa) for supported Kasa/Tapo protocol implementations and capability definitions. It is a separate Home Assistant custom integration with its own config flow, storage policy, entity mapping, and deterministic connection rules.
+- **`dev` is the only branch for ongoing work.** Changes, documentation updates, and tests belong there.
+- **`main` is the public release branch.** Work reaches `main` through a reviewed pull request from `dev` after validation.
+- Public version numbers come from `custom_components/tapo_local/manifest.json`. A documentation-only edit on `dev` does not change that version or create a new release.
+- Read the [changelog](CHANGELOG.md) for what changed, and use [GitHub Releases](https://github.com/gigabytegrove/tapo-local/releases) for public versions. Development commits are not advertised as installed releases.
 
-python-kasa is installed as a separate dependency and is not vendored into this repository. See [THIRD_PARTY.md](THIRD_PARTY.md).
+This is an open-source project maintained by **Gigabyte Grove**. The original project author is **Brad Trammell**.
 
-## License
+## License and support
 
-Tapo Local source is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+Tapo Local is licensed under [Apache License 2.0](LICENSE). It uses separately licensed third-party packages described in [THIRD_PARTY.md](THIRD_PARTY.md).
 
-## Support Gigabyte Grove
-
-If this project is useful to you, you can support ongoing Gigabyte Grove development with an optional [PayPal donation](https://paypal.me/gigabytegrove). Donations are appreciated but never required to use this integration.
+If Tapo Local is useful to you, [support Gigabyte Grove on PayPal](https://paypal.me/gigabytegrove). Donations are optional and are not required to install or use it.

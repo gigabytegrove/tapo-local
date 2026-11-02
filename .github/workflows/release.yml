@@ -52,4 +52,14 @@ jobs:
             exit 0
           fi
 
-          gh release create "$VERSION"             --target "$VALIDATED_SHA"             --title "$VERSION"             --generate-notes
+          # The exact changelog section becomes the public release notes.
+          # Missing notes must fail the release, never fall back to a PR list.
+          NOTES_FILE="$(mktemp)"
+          trap 'rm -f "$NOTES_FILE"' EXIT
+          python3 tools/render_release_notes.py "$VERSION" > "$NOTES_FILE"
+          test -s "$NOTES_FILE"
+
+          gh release create "$VERSION" \
+            --target "$VALIDATED_SHA" \
+            --title "Tapo Local $VERSION" \
+            --notes-file "$NOTES_FILE"

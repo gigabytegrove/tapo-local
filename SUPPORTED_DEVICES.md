@@ -1,5 +1,8 @@
 # Supported devices
 
+**For new users:** Only the three models in the hardware-verified table below have been tested directly with Tapo Local hardware. Other models below are compatibility examples based on upstream python-kasa fixture data, not a guarantee that every hardware or firmware revision works. Home Assistant automatically installs the required python-kasa dependency (minimum 0.11.0.1).
+
+
 Tapo Local is **capability-driven**. It does not maintain a brittle model whitelist for normal python-kasa devices.
 
 A device is accepted when its locally detected protocol family and python-kasa device type map to a Home Assistant platform Tapo Local implements.
@@ -7,7 +10,7 @@ A device is accepted when its locally detected protocol family and python-kasa d
 This document separates:
 
 - **Tapo Local hardware verified** — physically tested directly with this project.
-- **python-kasa 0.10.2 upstream tested** — models represented by python-kasa 0.10.2 fixtures/support and handled by Tapo Local's implemented local transport/platform path.
+- **historical upstream python-kasa fixture examples** — models represented by historical python-kasa fixtures/support and handled by Tapo Local's implemented local transport/platform path.
 - **Not yet advertised** — python-kasa may support the device, but Tapo Local does not yet provide the correct Home Assistant platform.
 
 ## Tapo Local hardware verified
@@ -24,7 +27,7 @@ Tapo Local explicitly connects the legacy IOT/XOR transport and lets python-kasa
 
 Supported Home Assistant classes include plug, wall switch, dimmer, power strip/outlet children, bulb, and light strip.
 
-Known python-kasa 0.10.2 fixture models in this path include:
+Known historical python-kasa fixture models in this path include:
 
 ### Plugs, outlets, switches, dimmers, and strips
 
@@ -183,13 +186,13 @@ Typical child mappings include:
 
 ### Hub limitations
 
-- S200B/S200D live button-press event streams are not advertised yet because python-kasa 0.10.2 does not provide the event behavior Tapo Local needs.
+- S200B/S200D live button-press event streams are not advertised yet because the reference python-kasa fixtures do not provide the event behavior Tapo Local needs.
 - KE100 thermostat/climate control is not advertised until Tapo Local implements a proper Home Assistant climate platform.
 - H200 camera/video functions are not advertised; the hub/sensor path does not imply camera streaming support.
 
 ## Tapo DL100
 
-The DL100 uses Tapo Local's native DLKLAP backend rather than python-kasa 0.10.2.
+The DL100 uses Tapo Local's native DLKLAP backend rather than historical upstream python-kasa fixtures.
 
 Current verified behavior:
 
@@ -203,7 +206,7 @@ Current verified behavior:
 - low-battery binary sensor
 - persistent private DLKLAP session storage
 
-Initial setup currently requires an already-authorized local DLKLAP session import.
+Initial setup uses the original Tapo owner's credentials to authorize an encrypted local session. If your account contains multiple DL100s, setup lets you choose the correct lock when it cannot be matched automatically. Later lock commands use the local network; authorizing a new encrypted session still requires TP-Link cloud access.
 
 ## Not yet advertised
 
