@@ -51,6 +51,13 @@
         "data": {
           "discovered_host": "Discovered device"
         }
+      },
+      "dl100_choose": {
+        "title": "Select the correct DL100",
+        "description": "Multiple DL100 locks can belong to the same Tapo account. Confirm which owner-account lock is physically reachable at {host} before Tapo Local requests a control key. Already configured locks are omitted. Choosing the wrong lock will fail authorization; no existing entries will be changed.",
+        "data": {
+          "dl100_cloud_device": "Tapo account lock"
+        }
       }
     },
     "error": {
@@ -72,10 +79,11 @@
       "no_devices_found": "No unconfigured Tapo devices answered. Auto mode uses Home Assistant's enabled interface CIDRs; for routed VLANs like 172.20.0.0/16, specify that CIDR directly. Legacy Kasa switches are also checked using TCP 9999.",
       "invalid_selection": "Select a device from the current discovery results.",
       "dl100_cloud_login_failed": "DL100 owner-account login failed. Check account credentials, TP-Link cloud availability, and any account verification requirements. Details appear in Home Assistant logs.",
-      "dl100_cloud_device_failed": "DL100 identification failed: the account did not return one identifiable DL100 device. Confirm the account owns the lock and review Home Assistant logs.",
-      "dl100_control_key_failed": "TP-Link's DL100 control-key authorization failed. Check the exact HTTP status or numeric error code in Home Assistant logs. A device that is already configured should be managed through its existing entry.",
+      "dl100_cloud_device_failed": "Tapo Local could not retrieve or identify the DL100 devices owned by this account. Check the owner account and Home Assistant logs. No new lock session was started.",
+      "dl100_control_key_failed": "The DL100 control-key request failed. Check the error code in Home Assistant logs. If you have multiple DL100s, repeat setup and choose the lock matching this IP from the account list.",
       "dl100_local_handshake_failed": "DL100 local encrypted handshake failed. Check that the lock is awake and reachable on TCP port 80; Home Assistant logs identify the failed handshake.",
-      "dl100_control_key_account_mismatch": "DL100 control-key rejected (15033). TP-Link reports an owner-account or handshake challenge mismatch. Use the lock's original Tapo owner account, not a shared account. If this lock already exists in Tapo Local, keep its existing session and use Reconfigure instead of adding it again."
+      "dl100_control_key_account_mismatch": "DL100 control-key rejected (15033). TP-Link reports an owner-account or handshake challenge mismatch. Use the lock's original Tapo owner account, not a shared account. If this lock already exists in Tapo Local, keep its existing session and use Reconfigure instead of adding it again.",
+      "dl100_no_unconfigured_locks": "This Tapo owner account has no unconfigured DL100 devices available. Existing locks are excluded; use their current integration entries."
     },
     "abort": {
       "already_configured": "This Tapo/Kasa device is already added. Open the existing integration entry to manage or reconfigure it; adding a second entry can invalidate the DL100 session.",

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.9
+
+- Repair multi-DL100 onboarding by authenticating the owner and listing available DL100 cloud IDs **before** local handshake0.
+- Match an exact TDP-reported device ID automatically when it exists in the owner's cloud list; otherwise require a deliberate lock choice (name and last six ID characters) instead of assuming a single DL100.
+- Exclude lock IDs already registered in Tapo Local from the owner selection list, recheck duplicates before provisioning, and preserve existing sessions, config entries and entities.
+- Keep credentials only in the in-progress config flow until local session verification; no tokens or raw cloud response bodies in logs.
+- Retain local-first lock operations and distinct owner-login, cloud-device, control-key and handshake errors.
+
+
 ## 0.7.8
 
 - Prevent duplicate setup of a Tapo Local device by matching existing host or stable DL100 ID before attempting TP-Link cloud authorization; preserve active local lock sessions.
