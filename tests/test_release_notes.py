@@ -47,6 +47,22 @@ class ReleaseNotesTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     notes.render_release_notes(version, content)
 
+    def test_ip_address_help_is_accessible_from_readme_and_support(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        support = (ROOT / "SUPPORT.md").read_text(encoding="utf-8")
+        guide = ROOT / "docs" / "FIND_DEVICE_IP.md"
+        self.assertTrue(guide.is_file())
+        text = guide.read_text(encoding="utf-8")
+        self.assertIn("docs/FIND_DEVICE_IP.md", readme)
+        self.assertIn("docs/FIND_DEVICE_IP.md", support)
+        for required in (
+            "MAC address", "DHCP", "Connected Devices", "IPv4",
+            "Reconfigure", "DL100", "Wi-Fi", "172.20.0.0/16",
+            "Device IP address or hostname", "not", "Default Gateway",
+        ):
+            self.assertIn(required, text)
+        self.assertNotIn("redacted.invalid", text)
+
     def test_readme_contains_required_live_badges_and_dependency(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         third_party = (ROOT / "THIRD_PARTY.md").read_text(encoding="utf-8")

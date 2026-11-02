@@ -4,7 +4,7 @@ If something is not working, try these steps before opening an issue.
 
 1. Check your version in **Settings → Devices & services → Tapo Local**. Compare with the [latest public release](https://github.com/gigabytegrove/tapo-local/releases/latest).
 2. Restart Home Assistant after installing or updating.
-3. Verify the device's current IP address in your router or the Tapo/Kasa app. Use **Reconfigure** on its existing entry if the IP changed.
+3. Verify the device's current IP address in your router or the Tapo/Kasa app. **Don't know where to look?** Our [beginner guide to finding your device's IP address](docs/FIND_DEVICE_IP.md) explains how to match the Wi-Fi MAC address in your router's connected-device or DHCP list. Use **Reconfigure** on an existing entry if the IP changed.
 4. If discovery fails, add the device using its IP address. For a separate network, you can scan its CIDR address, such as 172.20.0.0/16, without entering a separate subnet mask.
 5. For DL100 locks, use the **original Tapo owner account**. If more than one lock is listed, choose the correct one; do not delete a working lock entry.
 6. Check **Settings → System → Logs** for a Tapo Local error. Note the message and numeric error code, if any.

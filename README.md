@@ -22,7 +22,7 @@
   <a href="https://github.com/gigabytegrove/tapo-local/actions/workflows/repository-health.yml?query=branch%3Amain"><img alt="Main branch repository health" src="https://github.com/gigabytegrove/tapo-local/actions/workflows/repository-health.yml/badge.svg?branch=main"></a>
 </p>
 
-**Useful links:** [Install](#install-with-hacs) · [Supported devices](SUPPORTED_DEVICES.md) · [Recent release notes](CHANGELOG.md) · [Report a problem](https://github.com/gigabytegrove/tapo-local/issues) · [Help and support](SUPPORT.md) · [Source code](https://github.com/gigabytegrove/tapo-local) · [Support development](https://paypal.me/gigabytegrove)
+**Useful links:** [Install](#install-with-hacs) · [Find a device's IP](docs/FIND_DEVICE_IP.md) · [Supported devices](SUPPORTED_DEVICES.md) · [Recent release notes](CHANGELOG.md) · [Report a problem](https://github.com/gigabytegrove/tapo-local/issues) · [Help and support](SUPPORT.md) · [Source code](https://github.com/gigabytegrove/tapo-local) · [Support development](https://paypal.me/gigabytegrove)
 
 > **Before you begin:** Tapo Local is a community-made Home Assistant integration, not an official TP-Link product. It supports specific device types, not every device sold under the Kasa or Tapo names. Most controls work directly on your network; the **Tapo DL100 smart lock needs your Tapo owner's account for initial setup and to renew an expired encrypted session**. See [DL100 information](#tapo-dl100-smart-locks) before adding a lock.
 
@@ -76,9 +76,11 @@ A large network takes longer to scan. A `/16` contains 65,534 usable device addr
 
 ## Add a device by IP address
 
-If discovery misses a device, return to **Add integration → Tapo Local** and enter its actual IP address or hostname in **Device IP address or hostname**. Leave the scan field empty. Finish the on-screen steps.
+If discovery misses a device, you can add it by its IP address. **Don't know the IP?** Follow our step-by-step guide: **[How to find your Tapo or Kasa device's IP address](docs/FIND_DEVICE_IP.md)**. It explains what an IP and MAC address are, where to find your router's connected-device list, and how to match a MAC address to the correct IP—even when the router shows the device as **Unknown**.
 
-This is often the easiest method for a device on a separate VLAN. Home Assistant must be allowed to reach the device on its local network port. Never guess an IP address: confirm it from your router or the Tapo/Kasa app first.
+Once you know the address, return to **Add integration → Tapo Local**. Enter it in **Device IP address or hostname**, leave the network scan field empty, and follow the prompts.
+
+This is often easier than scanning a separate VLAN. Home Assistant still needs permission to reach that device over your network. Never guess an IP address or delete a working entry just to find it.
 
 ## Tapo DL100 smart locks
 
@@ -89,6 +91,7 @@ The DL100 is different from a normal Kasa switch.
 - **If the encrypted session expires:** Home Assistant may use the owner's saved credentials to contact TP-Link again and renew it automatically. The credentials and session material are stored privately by Home Assistant.
 - **If you have two or more DL100s:** Tapo Local checks the locks registered to the owner account. When it cannot match the new lock by its identity, it asks you to select the correct lock by its name and the end of its device ID. **Do not choose a different lock just to get past setup.**
 - **If a DL100 is already working:** Do not delete or add it again. Leave that entry in place.
+- **If you cannot find the lock's IP address:** Use the [device IP lookup guide](docs/FIND_DEVICE_IP.md). The Wi-Fi MAC address (when available) is the one to match against your router—not a Bluetooth address or setup code.
 
 A working DL100 still depends on TP-Link's authorization service whenever a **new** encrypted session is needed. We do not claim that session creation works without the cloud, or that every firmware/version has been tested on real hardware.
 
@@ -106,7 +109,7 @@ A working DL100 still depends on TP-Link's authorization service whenever a **ne
 
 ## Change a device's IP address
 
-If your router changes a device's IP address, you do **not** have to remove it from Home Assistant.
+If your router changes a device's IP address, you do **not** have to remove it from Home Assistant. If you do not know the new IP address, follow the [beginner IP-address lookup guide](docs/FIND_DEVICE_IP.md) first.
 
 1. Open **Settings → Devices & services → Tapo Local**.
 2. Find the entry for that device, open its menu, and select **Reconfigure**.
