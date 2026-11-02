@@ -98,8 +98,39 @@ class DL100ProvisioningTests(unittest.TestCase):
             b'{"deviceModel":"DL100","deviceId":"one"},'
             b'{"deviceModel":"DL100","deviceId":"two"}]}}')
         with patch.object(auth, "_request", return_value=(200, {}, payload)):
-            with self.assertRaisesRegex(auth.DL100ProvisioningError, "uniquely"):
+            with self.assertRaisesRegex(auth.DL100ProvisioningError, "Multiple or no DL100"):
                 auth._resolve_device_id("test-token", None)
+
+    def test_list_owned_dl100s_returns_all_ids_for_multiple_locks(self):
+        payload = (
+            b'{"error_code":0,"result":{"deviceList":['
+            b'{"deviceModel":"DL100(US)","deviceId":"garage-cloud",'
+            b'"alias":"Garage Door Lock"},'
+            b'{"deviceModel":"DL100(US)","deviceId":"side-cloud",'
+            b'"alias":"Side Door"},'
+            b'{"deviceModel":"KS200","deviceId":"switch","alias":"Hall"}]}}'
+        )
+        with patch.object(auth, "_cloud_login", return_value=("token-redacted", "acc")) as login, patch.object(
+            auth, "_request", return_value=(200, {}, payload)
+        ) as request:
+            devices = auth.list_owned_dl100_devices(
+                "owner@example.invalid", "password"
+            )
+        self.assertEqual(
+            {d["device_id"] for d in devices},
+            {"garage-cloud", "side-cloud"},
+        )
+        self.assertEqual(len(devices), 2)
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(login.call_count, 1)
+
+    def test_owner_device_list_failure_stops_before_any_handshake(self):
+        with patch.object(auth, "_cloud_login", return_value=("token", "acc")), patch.object(
+            auth, "_request", return_value=(500, {}, b"Internal error")
+        ):
+            with self.assertRaises(auth.DL100ProvisioningError) as error:
+                auth.list_owned_dl100_devices("owner@example.invalid", "password")
+        self.assertEqual(error.exception.stage, "cloud_device")
 
     def test_cloud_transport_error_is_classified_and_redacted(self):
         with patch.object(auth, "_cloud_login", side_effect=OSError("secret-password")):
