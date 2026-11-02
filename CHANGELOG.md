@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.7 (dev candidate)
+
+- Auto-detect enabled Home Assistant interface IPv4 CIDRs (and corresponding masks) when no discovery target is provided; still allow an explicit routed-VLAN CIDR.
+- Add bounded legacy XOR TCP/9999 identification when devices do not reply to UDP discovery.
+- Never substitute a DL100 IP address as the TP-Link cloud device ID when discovery lacks a stable ID; resolve via the authorized cloud device list instead.
+- Classify DL100 owner login, cloud device resolution, control-key issuance and LAN handshake failures in setup without exposing account tokens or credentials.
+- Preserve existing device entries, sessions, explicit authorization and local-first behavior.
+- Wake a sleeping DL100 radio with best-effort TCP connects before handshake0, without repeating handshake0 or mutating lock state.
+- Hold this version on the dev branch until testing and release approval.
+
+
 ## 0.7.6
 
 ### Private IPv4 CIDR discovery and safe duplicate handling

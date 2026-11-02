@@ -49,7 +49,7 @@ from .const import (
 )
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 from .discovery import async_targeted_tdp_discovery
-from .network_scan import DEFAULT_DISCOVERY_TARGET, async_scan_local_devices, validate_discovery_target
+from .network_scan import async_scan_selected_networks, validate_discovery_target
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ CONF_DISCOVERED_HOST = "discovered_host"
 USER_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_HOST, default=""): cv.string,
-        vol.Optional(CONF_SCAN_TARGET, default=DEFAULT_DISCOVERY_TARGET): cv.string,
+        vol.Optional(CONF_SCAN_TARGET, default=""): cv.string,
     }
 )
 SMART_CREDENTIALS_SCHEMA = vol.Schema(
@@ -248,11 +248,10 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = str(user_input.get(CONF_HOST) or "").strip()
             if not host:
-                target = str(
-                    user_input.get(CONF_SCAN_TARGET) or DEFAULT_DISCOVERY_TARGET
-                ).strip()
+                target = str(user_input.get(CONF_SCAN_TARGET) or "").strip()
                 try:
-                    target = validate_discovery_target(target)
+                    if target:
+                        target = validate_discovery_target(target)
                 except ValueError:
                     errors[CONF_SCAN_TARGET] = "invalid_scan_target"
                 else:
@@ -261,8 +260,10 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._scan_error = None
                     self._configured_on_scan = 0
                     self._scan_task = self.hass.async_create_task(
-                        async_scan_local_devices(
-                            target, progress_callback=self.async_update_progress
+                        async_scan_selected_networks(
+                            self.hass,
+                            target,
+                            progress_callback=self.async_update_progress,
                         )
                     )
                     return await self.async_step_scan()
@@ -359,10 +360,12 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if discovery:
                         model = str(discovery.get("device_model") or "")
                         dtype = str(discovery.get("device_type") or "")
+                        # A missing DL100 ID must be resolved from the
+                        # owner's cloud device list, never replaced by its IP.
                         device_id = str(
                             discovery.get("device_id")
                             or discovery.get("deviceId")
-                            or host
+                            or ""
                         )
                         if (
                             model.split("(", 1)[0].strip() == "DL100"
@@ -646,7 +649,14 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._pending_dl100["host"],
                     exc,
                 )
-                errors["base"] = "dl100_auth_failed"
+                errors["base"] = {
+                    "cloud_login": "dl100_cloud_login_failed",
+                    "cloud_device": "dl100_cloud_device_failed",
+                    "handshake0": "dl100_local_handshake_failed",
+                    "handshake1": "dl100_local_handshake_failed",
+                    "handshake2": "dl100_local_handshake_failed",
+                    "control_key": "dl100_control_key_failed",
+                }.get(getattr(exc, "stage", None), "dl100_auth_failed")
             except Exception:
                 _LOGGER.exception(
                     "Unexpected DL100 automatic session provisioning failure for %s",

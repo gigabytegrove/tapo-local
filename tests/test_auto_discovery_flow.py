@@ -69,18 +69,18 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.flow.async_show_progress_done = lambda **kw: {"type":"progress_done", **kw}
         self.progress = []
         self.flow.async_update_progress = self.progress.append
-        async def scan(target, *, progress_callback):
+        async def scan(hass, target, *, progress_callback):
             progress_callback(1.0)
             return []
-        self.ns["async_scan_local_devices"] = scan
+        self.ns["async_scan_selected_networks"] = scan
 
     async def start_scan(self, found):
-        async def scan(target, *, progress_callback):
+        async def scan(hass, target, *, progress_callback):
             progress_callback(.5)
             await asyncio.sleep(0)
             progress_callback(1.0)
             return found
-        self.ns["async_scan_local_devices"] = scan
+        self.ns["async_scan_selected_networks"] = scan
         started = await self.flow.async_step_user({HOST:"",SCAN_TARGET:"172.20.0.0/16"})
         self.assertEqual(started["type"], "progress")
         self.assertEqual(started["progress_action"], "scanning")
@@ -131,9 +131,9 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["errors"],{"base":"no_devices_found"})
 
     async def test_scan_error_allows_retry(self):
-        async def fail(target, *, progress_callback):
+        async def fail(hass, target, *, progress_callback):
             raise OSError("Network unreachable")
-        self.ns["async_scan_local_devices"] = fail
+        self.ns["async_scan_selected_networks"] = fail
         result = await self.flow.async_step_user({HOST:"",SCAN_TARGET:"172.20.0.0/16"})
         self.assertEqual(result["type"],"progress")
         await asyncio.sleep(0)
