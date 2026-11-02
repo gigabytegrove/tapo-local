@@ -100,8 +100,9 @@ class CIDRScanTests(unittest.IsolatedAsyncioTestCase):
         async def send(_sock, host, _probes):
             sends.append(host)
             return 3
-        with patch.object(scan, "_send", side_effect=send),
-              patch.object(scan, "_tcp_probe_legacy", new_callable=AsyncMock, return_value=None), patch.object(scan, "REPLY_GRACE_SECONDS", 0):
+        with (patch.object(scan, "_send", side_effect=send),
+              patch.object(scan, "_tcp_probe_legacy", new_callable=AsyncMock, return_value=None),
+              patch.object(scan, "REPLY_GRACE_SECONDS", 0)):
             await scan.async_scan_local_devices("172.20.0.34")
         self.assertEqual(sends, ["172.20.0.34", "172.20.0.34"])
 
