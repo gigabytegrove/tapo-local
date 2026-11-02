@@ -21,6 +21,32 @@ auth = importlib.import_module("custom_components.tapo_local.dl100_auth")
 
 
 class DL100ProvisioningTests(unittest.TestCase):
+    def test_wake_only_opens_tcp_and_retries_refused_connects(self):
+        attempts = []
+        class Connection:
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc, tb):
+                return False
+        def connect(addr, timeout):
+            attempts.append((addr, timeout))
+            if len(attempts) < 3:
+                raise ConnectionRefusedError("cold radio")
+            return Connection()
+        with patch.object(auth.socket, "create_connection", side_effect=connect), patch.object(
+            auth.time, "sleep"
+        ) as sleeper:
+            self.assertTrue(auth._wake_lock("172.20.0.100", timeout=0.5))
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(attempts[-1], (("172.20.0.100", 80), 0.5))
+        self.assertEqual(sleeper.call_count, 2)
+
+    def test_unreachable_wake_does_not_send_handshake_or_raise(self):
+        with patch.object(auth.socket, "create_connection", side_effect=OSError), patch.object(
+            auth.time, "sleep"
+        ):
+            self.assertFalse(auth._wake_lock("172.20.0.100"))
+
     def test_missing_local_id_must_resolve_cloud_device(self):
         reply = b'{"error_code":0,"result":{"deviceList":[{"deviceModel":"DL100(US)","deviceId":"cloud-id"}]}}'
         with patch.object(auth, "_request", return_value=(200, {}, reply)):

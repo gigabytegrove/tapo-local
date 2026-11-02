@@ -13,6 +13,8 @@ import hashlib
 import http.client
 import json
 import os
+import socket
+import time
 import ssl
 import uuid
 from typing import Any
@@ -88,6 +90,23 @@ def _request(
         return response.status, response_headers, response.read()
     finally:
         conn.close()
+
+
+def _wake_lock(host: str, *, timeout: float = 1.0) -> bool:
+    """Best-effort DL100 radio wake with no handshake or state mutation.
+
+    The DL100 may initially refuse TCP connections while its Wi-Fi radio
+    sleeps. Never retry handshake0 itself: repeating that challenge can
+    invalidate a control key already minted for a previous handshake.
+    """
+    for attempt in range(3):
+        try:
+            with socket.create_connection((host, 80), timeout=timeout):
+                return True
+        except OSError:
+            if attempt < 2:
+                time.sleep(0.3)
+    return False
 
 
 def _cloud_login(
@@ -190,6 +209,9 @@ def establish_session(
         "Content-Type": "text/plain",
         "Referer": f"http://{host}:80/",
     }
+
+    # Waking the sleeping radio is safe; handshake0 is NOT retryable.
+    _wake_lock(host, timeout=min(float(timeout), 2.0))
 
     # Handshake 0
     rand4 = os.urandom(4)
