@@ -230,6 +230,8 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._pending_dl100: dict[str, Any] | None = None
+        self._dl100_owner_credentials: dict[str, str] | None = None
+        self._dl100_owner_candidates: dict[str, str] = {}
         self._pending_smart: dict[str, Any] | None = None
         self._discovered: dict[str, dict[str, str]] = {}
         self._scan_task: asyncio.Task[list[dict[str, str]]] | None = None
@@ -638,7 +640,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Provision a fresh DL100 session and retain owner credentials privately."""
+        """Resolve the owner's specific lock BEFORE requesting a control key."""
         if self._pending_dl100 is None:
             return self.async_abort(reason="cannot_connect")
 
@@ -646,8 +648,6 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             pending_host = self._pending_dl100["host"]
             pending_id = self._pending_dl100.get("device_id")
-            # A config flow can remain open while another flow registers
-            # this device. Check again immediately before cloud bootstrap.
             if any(
                 entry.data.get(CONF_HOST) == pending_host
                 or (pending_id and entry.unique_id == pending_id)
@@ -660,106 +660,233 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             establish_session = auth_module.establish_session
             DL100ProvisioningError = auth_module.DL100ProvisioningError
+            selected_device_id = str(
+                user_input.get("_selected_cloud_device") or ""
+            ).strip()
 
-            try:
-                provisioned = await self.hass.async_add_executor_job(
-                    partial(
-                        establish_session,
-                        self._pending_dl100["host"],
-                        user_input[CONF_USERNAME],
-                        user_input[CONF_PASSWORD],
-                        device_id=self._pending_dl100.get("device_id"),
-                    )
-                )
-            except DL100ProvisioningError as exc:
-                _LOGGER.warning(
-                    "DL100 automatic session provisioning failed for %s: %s",
-                    self._pending_dl100["host"],
-                    exc,
-                )
-                errors["base"] = {
-                    "cloud_login": "dl100_cloud_login_failed",
-                    "cloud_device": "dl100_cloud_device_failed",
-                    "handshake0": "dl100_local_handshake_failed",
-                    "handshake1": "dl100_local_handshake_failed",
-                    "handshake2": "dl100_local_handshake_failed",
-                    "control_key": (
-                        "dl100_control_key_account_mismatch"
-                        if getattr(exc, "code", None) == 15033
-                        else "dl100_control_key_failed"
-                    ),
-                }.get(getattr(exc, "stage", None), "dl100_auth_failed")
-            except Exception:
-                _LOGGER.exception(
-                    "Unexpected DL100 automatic session provisioning failure for %s",
-                    self._pending_dl100["host"],
-                )
-                errors["base"] = "unknown"
-            else:
-                session_state = provisioned["session"]
-                dl100_module = await async_import_module(
-                    self.hass, f"{__package__}.dl100_backend"
-                )
-                DL100LocalDevice = dl100_module.DL100LocalDevice
-                DL100LocalError = dl100_module.DL100LocalError
-
-                device = DL100LocalDevice(
-                    self._pending_dl100["host"],
-                    session_state=session_state,
-                )
+            if not selected_device_id:
+                # Only one owner-account login/device-list call is needed to
+                # identify candidate locks. No handshake0 occurs here.
+                self._dl100_owner_credentials = None
+                self._dl100_owner_candidates = {}
                 try:
-                    state = await device.get_state()
-                except DL100LocalError as exc:
+                    cloud_devices = await self.hass.async_add_executor_job(
+                        auth_module.list_owned_dl100_devices,
+                        str(user_input[CONF_USERNAME]),
+                        str(user_input[CONF_PASSWORD]),
+                    )
+                except DL100ProvisioningError as exc:
                     _LOGGER.warning(
-                        "Fresh DL100 session verification failed for %s: %s",
+                        "DL100 owner device selection failed for %s: %s",
+                        pending_host, exc
+                    )
+                    errors["base"] = (
+                        "dl100_cloud_login_failed"
+                        if exc.stage == "cloud_login"
+                        else "dl100_cloud_device_failed"
+                    )
+                except Exception:
+                    _LOGGER.exception(
+                        "Unexpected DL100 owner device lookup failure for %s",
+                        pending_host
+                    )
+                    errors["base"] = "unknown"
+                else:
+                    registered = {
+                        str(value)
+                        for entry in self._async_current_entries()
+                        for value in (
+                            entry.unique_id,
+                            entry.data.get(CONF_DL100_DEVICE_ID),
+                        )
+                        if value
+                    }
+                    choices = {
+                        item["device_id"]: (
+                            f"{item['alias']} — ID ending {item['device_id'][-6:]}"
+                        )
+                        for item in cloud_devices
+                        if item["device_id"] not in registered
+                    }
+                    if not choices:
+                        errors["base"] = "dl100_no_unconfigured_locks"
+                    else:
+                        self._dl100_owner_credentials = {
+                            CONF_USERNAME: str(user_input[CONF_USERNAME]).strip(),
+                            CONF_PASSWORD: str(user_input[CONF_PASSWORD]),
+                        }
+                        self._dl100_owner_candidates = choices
+                        # An exact local TDP/cloud identity is authoritative.
+                        # Otherwise, require the user to select; never guess
+                        # from the order of two locks returned by the cloud.
+                        if pending_id and pending_id in choices:
+                            selected_device_id = pending_id
+                        else:
+                            return await self.async_step_dl100_choose()
+            else:
+                # Hidden internal marker may ONLY be supplied by a validated
+                # owner-account choice from the preceding step.
+                if (
+                    not self._dl100_owner_credentials
+                    or selected_device_id not in self._dl100_owner_candidates
+                ):
+                    errors["base"] = "dl100_cloud_device_failed"
+
+            if selected_device_id and not errors:
+                # Recheck existing identities after a possibly long cloud
+                # lookup; never steal a running lock's session.
+                if any(
+                    entry.unique_id == selected_device_id
+                    or entry.data.get(CONF_DL100_DEVICE_ID) == selected_device_id
+                    for entry in self._async_current_entries()
+                ):
+                    self._dl100_owner_credentials = None
+                    self._dl100_owner_candidates = {}
+                    return self.async_abort(reason="already_configured")
+                # Guarantee the selected, owner-listed ID takes precedence
+                # over a nonmatching locally advertised TDP identifier.
+                self._pending_dl100["device_id"] = selected_device_id
+                try:
+                    provisioned = await self.hass.async_add_executor_job(
+                        partial(
+                            establish_session,
+                            self._pending_dl100["host"],
+                            user_input[CONF_USERNAME],
+                            user_input[CONF_PASSWORD],
+                            device_id=selected_device_id,
+                        )
+                    )
+                except DL100ProvisioningError as exc:
+                    _LOGGER.warning(
+                        "DL100 automatic session provisioning failed for %s: %s",
                         self._pending_dl100["host"],
                         exc,
                     )
-                    errors["base"] = "dl100_auth_failed"
+                    errors["base"] = {
+                        "cloud_login": "dl100_cloud_login_failed",
+                        "cloud_device": "dl100_cloud_device_failed",
+                        "handshake0": "dl100_local_handshake_failed",
+                        "handshake1": "dl100_local_handshake_failed",
+                        "handshake2": "dl100_local_handshake_failed",
+                        "control_key": (
+                            "dl100_control_key_account_mismatch"
+                            if getattr(exc, "code", None) == 15033
+                            else "dl100_control_key_failed"
+                        ),
+                    }.get(getattr(exc, "stage", None), "dl100_auth_failed")
+                except Exception:
+                    _LOGGER.exception(
+                        "Unexpected DL100 automatic session provisioning failure for %s",
+                        self._pending_dl100["host"],
+                    )
+                    errors["base"] = "unknown"
                 else:
-                    unique_id = str(
-                        provisioned.get("device_id")
-                        or self._pending_dl100.get("device_id")
-                        or self._pending_dl100["host"]
+                    session_state = provisioned["session"]
+                    dl100_module = await async_import_module(
+                        self.hass, f"{__package__}.dl100_backend"
                     )
-                    await self.async_set_unique_id(unique_id)
-                    self._abort_if_unique_id_configured(
-                        updates={CONF_HOST: self._pending_dl100["host"]}
-                    )
+                    DL100LocalDevice = dl100_module.DL100LocalDevice
+                    DL100LocalError = dl100_module.DL100LocalError
 
-                    sysinfo = state["sysinfo"]
-                    title = str(
-                        sysinfo.get("nickname")
-                        or sysinfo.get("device_name")
-                        or self._pending_dl100["model"]
+                    device = DL100LocalDevice(
+                        self._pending_dl100["host"],
+                        session_state=session_state,
                     )
+                    try:
+                        state = await device.get_state()
+                    except DL100LocalError as exc:
+                        _LOGGER.warning(
+                            "Fresh DL100 session verification failed for %s: %s",
+                            self._pending_dl100["host"],
+                            exc,
+                        )
+                        errors["base"] = "dl100_auth_failed"
+                    else:
+                        unique_id = str(
+                            provisioned.get("device_id")
+                            or self._pending_dl100.get("device_id")
+                            or self._pending_dl100["host"]
+                        )
+                        await self.async_set_unique_id(unique_id)
+                        self._abort_if_unique_id_configured(
+                            updates={CONF_HOST: self._pending_dl100["host"]}
+                        )
 
-                    # A fresh automatically provisioned session supersedes
-                    # any legacy manual-import cache left from older releases.
-                    legacy_import = self.hass.config.path(DL100_SESSION_IMPORT)
-                    await self.hass.async_add_executor_job(
-                        _remove_session_import, legacy_import
-                    )
+                        sysinfo = state["sysinfo"]
+                        title = str(
+                            sysinfo.get("nickname")
+                            or sysinfo.get("device_name")
+                            or self._pending_dl100["model"]
+                        )
 
-                    return self.async_create_entry(
-                        title=title,
-                        data={
-                            CONF_HOST: self._pending_dl100["host"],
-                            "model": self._pending_dl100["model"],
-                            "device_type": self._pending_dl100["device_type"],
-                            CONF_TRANSPORT: TRANSPORT_DLKLAP,
-                            CONF_SESSION: device.export_session(),
-                            CONF_CLOUD_USERNAME: user_input[CONF_USERNAME],
-                            CONF_CLOUD_PASSWORD: user_input[CONF_PASSWORD],
-                            CONF_TERMINAL_UUID: provisioned["terminal_uuid"],
-                            CONF_DL100_DEVICE_ID: provisioned["device_id"],
-                        },
-                    )
+                        # A fresh automatically provisioned session supersedes
+                        # any legacy manual-import cache left from older releases.
+                        legacy_import = self.hass.config.path(DL100_SESSION_IMPORT)
+                        await self.hass.async_add_executor_job(
+                            _remove_session_import, legacy_import
+                        )
+
+                        return self.async_create_entry(
+                            title=title,
+                            data={
+                                CONF_HOST: self._pending_dl100["host"],
+                                "model": self._pending_dl100["model"],
+                                "device_type": self._pending_dl100["device_type"],
+                                CONF_TRANSPORT: TRANSPORT_DLKLAP,
+                                CONF_SESSION: device.export_session(),
+                                CONF_CLOUD_USERNAME: user_input[CONF_USERNAME],
+                                CONF_CLOUD_PASSWORD: user_input[CONF_PASSWORD],
+                                CONF_TERMINAL_UUID: provisioned["terminal_uuid"],
+                                CONF_DL100_DEVICE_ID: provisioned["device_id"],
+                            },
+                        )
 
         return self.async_show_form(
             step_id="dl100_credentials",
             data_schema=DL100_CREDENTIALS_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_dl100_choose(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm exactly which owned DL100 is at the selected LAN host."""
+        if (
+            self._pending_dl100 is None
+            or not self._dl100_owner_credentials
+            or not self._dl100_owner_candidates
+        ):
+            return await self.async_step_dl100_credentials()
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            device_id = str(user_input.get("dl100_cloud_device") or "")
+            if device_id not in self._dl100_owner_candidates:
+                errors["dl100_cloud_device"] = "invalid_selection"
+            elif any(
+                entry.unique_id == device_id
+                or entry.data.get(CONF_DL100_DEVICE_ID) == device_id
+                for entry in self._async_current_entries()
+            ):
+                self._dl100_owner_credentials = None
+                self._dl100_owner_candidates = {}
+                return self.async_abort(reason="already_configured")
+            else:
+                credentials = dict(self._dl100_owner_credentials)
+                credentials["_selected_cloud_device"] = device_id
+                return await self.async_step_dl100_credentials(credentials)
+
+        return self.async_show_form(
+            step_id="dl100_choose",
+            data_schema=vol.Schema({
+                vol.Required("dl100_cloud_device"): vol.In(
+                    self._dl100_owner_candidates
+                ),
+            }),
+            errors=errors,
+            description_placeholders={
+                "host": self._pending_dl100["host"],
+            },
         )
 
     async def async_step_dl100_session(

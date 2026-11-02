@@ -154,16 +154,8 @@ def _cloud_login(
     return str(result["token"]), str(result["accountId"])
 
 
-def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
-    if preferred_device_id and preferred_device_id not in {"", "None"}:
-        # A TDP device ID is valid, but the IPv4 host previously used as a
-        # fallback here is NOT a TP-Link cloud device ID.
-        try:
-            import ipaddress
-            ipaddress.ip_address(preferred_device_id)
-        except ValueError:
-            return preferred_device_id
-
+def _owned_dl100_list(token: str) -> list[dict[str, str]]:
+    """List owner-account DL100s without logging tokens, IDs or cloud payloads."""
     status, _, raw = _request(
         "https",
         "wap.tplinkcloud.com",
@@ -172,28 +164,67 @@ def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
         body=json.dumps({"method": "getDeviceList"}, separators=(",", ":")),
     )
     if status != 200:
-        raise DL100ProvisioningError(f"getDeviceList returned HTTP {status}")
+        raise DL100ProvisioningError(
+            f"getDeviceList returned HTTP {status}", stage="cloud_device"
+        )
     try:
         value = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise DL100ProvisioningError("getDeviceList returned invalid JSON") from exc
-    if value.get("error_code") != 0:
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise DL100ProvisioningError(
-            f"getDeviceList failed with error_code {value.get('error_code')}"
-        )
-    devices = (value.get("result") or {}).get("deviceList") or []
-    dl100s = [
-        item for item in devices
-        if isinstance(item, dict) and "DL100" in str(item.get("deviceModel") or "")
-    ]
-    if len(dl100s) != 1:
+            "getDeviceList returned invalid JSON", stage="cloud_device"
+        ) from exc
+    if not isinstance(value, dict) or value.get("error_code") != 0:
+        code = value.get("error_code") if isinstance(value, dict) else None
         raise DL100ProvisioningError(
-            "Unable to uniquely resolve this DL100 from the Tapo account"
+            f"getDeviceList failed (error_code {code})", stage="cloud_device"
         )
-    device_id = dl100s[0].get("deviceId")
-    if not device_id:
-        raise DL100ProvisioningError("Tapo cloud device list returned no DL100 device ID")
-    return str(device_id)
+    result = value.get("result")
+    devices = result.get("deviceList") if isinstance(result, dict) else None
+    if not isinstance(devices, list):
+        raise DL100ProvisioningError(
+            "getDeviceList returned no device list", stage="cloud_device"
+        )
+    found: dict[str, dict[str, str]] = {}
+    for item in devices:
+        if not isinstance(item, dict):
+            continue
+        model = str(item.get("deviceModel") or "")
+        device_id = str(item.get("deviceId") or "").strip()
+        if "DL100" not in model.upper() or not device_id:
+            continue
+        alias = str(item.get("alias") or item.get("deviceName") or "DL100").strip()
+        found[device_id] = {"device_id": device_id, "alias": alias[:90], "model": model}
+    return sorted(found.values(), key=lambda x: (x["alias"].casefold(), x["device_id"]))
+
+
+def list_owned_dl100_devices(username: str, password: str) -> list[dict[str, str]]:
+    """Authenticate owner and return the owned locks before any LAN handshake."""
+    with _provision_stage("cloud_login"):
+        token, _ = _cloud_login(username.strip(), password, str(uuid.uuid4()).upper())
+    with _provision_stage("cloud_device"):
+        return _owned_dl100_list(token)
+
+
+def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
+    """Fail closed if an owner account cannot uniquely resolve the lock.
+
+    The config flow resolves multi-lock accounts BEFORE handshake0. Retain
+    explicit IDs on future reauthorization, but do not invent one from an IP.
+    """
+    if preferred_device_id and preferred_device_id not in {"", "None"}:
+        try:
+            import ipaddress
+            ipaddress.ip_address(preferred_device_id)
+        except ValueError:
+            return preferred_device_id
+    found = _owned_dl100_list(token)
+    if len(found) != 1:
+        raise DL100ProvisioningError(
+            "Multiple or no DL100 locks found; select the correct lock from "
+            "the owner-account list before starting a session",
+            stage="cloud_device",
+        )
+    return found[0]["device_id"]
 
 
 def _parse_control_key_response(raw: bytes) -> str:

@@ -99,6 +99,12 @@ Tapo Local provides **on-demand local network discovery** in Home Assistant's Ad
 
 **Important:** The scan can only find devices that reply to these discovery packets. Home Assistant must have permitted UDP connectivity to the target VLAN (including return traffic). Sleeping DL100 locks, firewalled hosts, and devices with discovery disabled may be missed; add those by IP address manually. CIDR discovery does not use TP-Link cloud, automatically register devices, alter existing entries, or perform TCP host sweeps. This is not continuous/background discovery.
 
+### Multiple DL100 locks on one TP-Link owner account
+
+If your owner account contains more than one DL100, Tapo Local now authenticates the owner **before** beginning the local DLKLAP handshake and retrieves the owned lock list. Locks already configured in Tapo Local are omitted. If the local TDP ID matches a remaining owned cloud device ID exactly, that lock is used automatically. Otherwise, select the correct DL100 by its name in the Tapo app and verify the short ID suffix shown in the selection form before authorizing it.
+
+For example, with a working Garage Door Lock entry already installed, adding a second DL100 at a different IP does **not** repeat authorization against the existing garage lock ID. The flow refuses to guess based on account list order; no new session is requested until you confirm the lock. Existing configurations, local sessions, and entity IDs are preserved.
+
 ### DL100 setup diagnostics
 
 DL100 setup needs owner-account authorization for a fresh DLKLAP session. When it fails, the UI now separates owner login, cloud device identity, control-key issuance and local handshake failures instead of returning one generic message. Home Assistant logs record the failing step and a safe HTTP status/error code where available, without dumping passwords, tokens or session material.
