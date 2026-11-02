@@ -14,5 +14,8 @@
   "requirements": [
     "python-kasa>=0.11.0.1"
   ],
-  "version": "0.7.7"
+  "version": "0.7.7",
+  "dependencies": [
+    "network"
+  ]
 }
