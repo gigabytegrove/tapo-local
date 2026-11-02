@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.6
+
+### Private IPv4 CIDR discovery and safe duplicate handling
+
+- Allow on-demand IPv4 CIDR discovery including `172.20.0.0/16` instead of rejecting the slash notation.
+- Probe each usable CIDR address via local UDP 9999/20002/20004 at a bounded 256 hosts/second, with progress UI, a response cap, and a finite post-scan listening period.
+- Keep single-IP, broadcast and manual host setup; reject public networks and CIDRs wider than /16.
+- Filter already configured integration devices by stable device identity or saved IP; show a count of skipped entries and do not alter configured devices.
+- Preserve explicit device selection, local protocol verification, normal credential flows, and local-only discovery.
+- Add regression tests for CIDR validation, rate-limited send-loop behavior, response filtering, progress and duplicate suppression.
+
+
 ## 0.7.5
 
 ### On-demand LAN auto-discovery

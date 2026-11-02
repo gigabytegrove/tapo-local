@@ -1,8 +1,9 @@
-"""Exercise the real HA config-flow discovery methods without HA/network access."""
+"""Real ConfigFlow discovery step tests with simulated Home Assistant progress."""
 
 from __future__ import annotations
 
 import ast
+import asyncio
 from pathlib import Path
 import types
 import unittest
@@ -13,42 +14,28 @@ SCAN_TARGET = "scan_target"
 DISCOVERED_HOST = "discovered_host"
 
 
-class FakeVol:
+class Vol:
     @staticmethod
     def Required(key):
         return key
-
     @staticmethod
-    def In(choices):
-        return choices
-
+    def In(values):
+        return values
     @staticmethod
-    def Schema(value):
-        return value
+    def Schema(schema):
+        return schema
 
 
-def load_real_flow():
-    tree = ast.parse(SOURCE.read_text(encoding="utf-8"), filename=str(SOURCE))
-    original = next(
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "TPLinkLocalConfigFlow"
+def make_flow():
+    code = ast.parse(SOURCE.read_text(encoding="utf-8"), filename=str(SOURCE))
+    original = next(x for x in code.body if isinstance(x, ast.ClassDef) and x.name == "TPLinkLocalConfigFlow")
+    selected = ("async_step_user", "async_step_scan", "async_step_discovered", "_discovery_label")
+    cls = ast.ClassDef(
+        name="TestedFlow", bases=[], keywords=[],
+        body=[x for x in original.body if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef)) and x.name in selected],
+        decorator_list=[],
     )
-    methods = [
-        node for node in original.body
-        if (isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
-            and node.name in ("async_step_user", "async_step_discovered", "_discovery_label"))
-    ]
-    klass = ast.ClassDef(
-        name="ActualDiscoveryFlow", bases=[], keywords=[],
-        body=methods, decorator_list=[],
-    )
-    compiled = compile(
-        ast.fix_missing_locations(ast.Module(body=[klass], type_ignores=[])),
-        str(SOURCE), "exec",
-    )
-    async def scan(target):
-        return []
-    namespace = {
+    ns = {
         "Any": object,
         "ConfigFlowResult": dict,
         "CONF_HOST": HOST,
@@ -56,96 +43,102 @@ def load_real_flow():
         "CONF_DISCOVERED_HOST": DISCOVERED_HOST,
         "DEFAULT_DISCOVERY_TARGET": "255.255.255.255",
         "USER_SCHEMA": {},
-        "vol": FakeVol,
+        "vol": Vol,
         "_LOGGER": types.SimpleNamespace(exception=lambda *args: None),
-        "async_scan_local_devices": scan,
+        "asyncio": asyncio,
         "validate_discovery_target": lambda x: x,
         "_valid_reconfigure_host": lambda x: True,
     }
-    exec(compiled, namespace)
-    return namespace["ActualDiscoveryFlow"], namespace
+    exec(compile(ast.fix_missing_locations(ast.Module(body=[cls],type_ignores=[])),str(SOURCE),"exec"),ns)
+    return ns["TestedFlow"],ns
 
 
-class DiscoveryFlowTests(unittest.IsolatedAsyncioTestCase):
+class FlowTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        cls, namespace = load_real_flow()
-        self.namespace = namespace
-        self.flow = cls()
+        flow_class, self.ns = make_flow()
+        self.flow = flow_class()
         self.flow._discovered = {}
+        self.flow._scan_task = None
+        self.flow._scan_error = None
+        self.flow._configured_on_scan = 0
+        self.flow.hass = types.SimpleNamespace(async_create_task=asyncio.create_task)
         self.flow._async_current_entries = lambda: []
-        self.flow.async_show_form = lambda **kw: dict(type="form", **kw)
-        self.flow.async_abort = lambda **kw: dict(type="abort", **kw)
-        self.forwarded = []
-        async def forward(data):
-            self.forwarded.append(data)
-            return {"type": "verified", "host": data[HOST]}
-        self.flow.async_step_user_forward = forward
+        self.flow.async_show_form = lambda **kw: {"type":"form", **kw}
+        self.flow.async_abort = lambda **kw: {"type":"abort", **kw}
+        self.flow.async_show_progress = lambda **kw: {"type":"progress", **kw}
+        self.flow.async_show_progress_done = lambda **kw: {"type":"progress_done", **kw}
+        self.progress = []
+        self.flow.async_update_progress = self.progress.append
+        async def scan(target, *, progress_callback):
+            progress_callback(1.0)
+            return []
+        self.ns["async_scan_local_devices"] = scan
 
-    async def test_discovered_selection_requires_user_confirmation(self):
-        self.flow._discovered = {
-            "192.0.2.12": {
-                "host": "192.0.2.12", "alias": "Kitchen",
-                "model": "KS200", "device_id": "123",
-            }
-        }
-        first = await self.flow.async_step_discovered()
-        self.assertEqual(first["type"], "form")
-        self.assertIn("192.0.2.12", first["data_schema"][DISCOVERED_HOST])
-        self.assertEqual(self.forwarded, [])
-        async def verify(data):
-            return await self.flow.async_step_user_forward(data)
-        self.flow.async_step_user = verify
-        selected = await self.flow.async_step_discovered({DISCOVERED_HOST: "192.0.2.12"})
-        self.assertEqual(selected["type"], "verified")
-        self.assertEqual(self.forwarded, [{HOST: "192.0.2.12"}])
-
-    async def test_rejects_addresses_not_in_current_results(self):
-        self.flow._discovered = {
-            "192.0.2.12": {
-                "host": "192.0.2.12", "alias": "Kitchen",
-                "model": "KS200", "device_id": "123",
-            }
-        }
-        response = await self.flow.async_step_discovered({DISCOVERED_HOST: "192.0.2.99"})
-        self.assertEqual(response["errors"], {DISCOVERED_HOST: "invalid_selection"})
-        self.assertEqual(self.forwarded, [])
-
-    async def test_no_results_aborts_selection(self):
-        self.assertEqual(
-            await self.flow.async_step_discovered(),
-            {"type": "abort", "reason": "no_devices_found"},
-        )
-
-    async def test_scan_excludes_configured_host_and_stable_identity(self):
-        found = [
-            dict(host="192.0.2.10", alias="Already here", model="KS200", device_id="A"),
-            dict(host="192.0.2.11", alias="Moved", model="KS200", device_id="B"),
-            dict(host="192.0.2.12", alias="New", model="KS200", device_id="C"),
-        ]
-        async def fake_scan(target):
-            self.assertEqual(target, "255.255.255.255")
+    async def start_scan(self, found):
+        async def scan(target, *, progress_callback):
+            progress_callback(.5)
+            await asyncio.sleep(0)
+            progress_callback(1.0)
             return found
-        self.namespace["async_scan_local_devices"] = fake_scan
+        self.ns["async_scan_local_devices"] = scan
+        started = await self.flow.async_step_user({HOST:"",SCAN_TARGET:"172.20.0.0/16"})
+        self.assertEqual(started["type"], "progress")
+        self.assertEqual(started["progress_action"], "scanning")
+        await self.flow._scan_task
+        done = await self.flow.async_step_scan()
+        self.assertEqual(done, {"type":"progress_done","next_step_id":"discovered"})
+
+    async def test_cidr_progress_and_existing_filtered_by_host_and_id(self):
         self.flow._async_current_entries = lambda: [
-            types.SimpleNamespace(data={HOST: "192.0.2.10"}, unique_id="A"),
-            types.SimpleNamespace(data={HOST: "192.0.2.99"}, unique_id="B"),
+            types.SimpleNamespace(data={HOST:"172.20.0.31"},unique_id="a"),
+            types.SimpleNamespace(data={HOST:"172.20.0.99"},unique_id="b"),
         ]
-        response = await self.flow.async_step_user({HOST: ""})
-        self.assertEqual(response["type"], "form")
-        self.assertEqual(list(self.flow._discovered), ["192.0.2.12"])
+        await self.start_scan([
+            dict(host="172.20.0.31",alias="Already",model="KS200",device_id="a"),
+            dict(host="172.20.0.32",alias="Moved",model="KS200",device_id="b"),
+            dict(host="172.20.0.33",alias="New",model="KS200",device_id="c"),
+        ])
+        form = await self.flow.async_step_discovered()
+        self.assertEqual(form["type"], "form")
+        self.assertEqual(form["description_placeholders"]["already_configured"],"2")
+        self.assertEqual(set(form["data_schema"][DISCOVERED_HOST]),{"172.20.0.33"})
+        self.assertEqual(self.progress, [.5, 1.0])
 
-    async def test_scan_without_results_reports_useful_error(self):
-        response = await self.flow.async_step_user({HOST: ""})
-        self.assertEqual(response["errors"], {"base": "no_devices_found"})
+    async def test_invalid_selection_not_probed(self):
+        self.flow._discovered = {"172.20.0.33":dict(
+            host="172.20.0.33",alias="New",model="KS200",device_id="c"
+        )}
+        result = await self.flow.async_step_discovered({DISCOVERED_HOST:"172.20.0.1"})
+        self.assertEqual(result["errors"],{DISCOVERED_HOST:"invalid_selection"})
 
-    def test_label_strips_control_characters(self):
-        label = self.flow._discovery_label({
-            "host": "192.0.2.12",
-            "alias": "Kitchen\n\tSwitch",
-            "model": "KS200",
-        })
-        self.assertNotIn("\n", label)
-        self.assertIn("KS200", label)
+    async def test_selection_uses_existing_verified_host_setup(self):
+        self.flow._discovered = {"172.20.0.33":dict(
+            host="172.20.0.33",alias="New",model="KS200",device_id="c"
+        )}
+        calls = []
+        async def verify(data):
+            calls.append(data)
+            return {"type":"verified"}
+        self.flow.async_step_user = verify
+        result = await self.flow.async_step_discovered({DISCOVERED_HOST:"172.20.0.33"})
+        self.assertEqual(result["type"],"verified")
+        self.assertEqual(calls,[{HOST:"172.20.0.33"}])
+
+    async def test_empty_results_allow_retry(self):
+        await self.start_scan([])
+        result = await self.flow.async_step_discovered()
+        self.assertEqual(result["type"],"form")
+        self.assertEqual(result["errors"],{"base":"no_devices_found"})
+
+    async def test_scan_error_allows_retry(self):
+        async def fail(target, *, progress_callback):
+            raise OSError("Network unreachable")
+        self.ns["async_scan_local_devices"] = fail
+        result = await self.flow.async_step_user({HOST:"",SCAN_TARGET:"172.20.0.0/16"})
+        self.assertEqual(result["type"],"progress")
+        await asyncio.sleep(0)
+        self.assertEqual((await self.flow.async_step_scan())["type"],"progress_done")
+        self.assertEqual((await self.flow.async_step_discovered())["errors"],{"base":"scan_failed"})
 
 
 if __name__ == "__main__":

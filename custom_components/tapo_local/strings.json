@@ -4,10 +4,10 @@
     "step": {
       "user": {
         "title": "Find or add a local TP-Link/Kasa/Tapo device",
-        "description": "Leave the address blank and select Submit to scan the LAN, or enter an address to add a device manually. For a routed VLAN, enter its IPv4 broadcast destination (for example 172.20.0.255); the network must permit directed broadcasts. Discovery never adds a device without your selection and any required authentication.",
+        "description": "Leave the device host blank and enter an IPv4 subnet such as 172.20.0.0/16 to scan it. A /16 may take several minutes. A single IPv4 scan target or default LAN broadcast also works. Or enter a device host to configure it directly. Device control stays local.",
         "data": {
           "host": "Device IP address or hostname (leave blank to scan)",
-          "scan_target": "IPv4 discovery broadcast target (optional)"
+          "scan_target": "Discovery target (IPv4 CIDR, IP, or broadcast)"
         }
       },
       "dl100_session": {
@@ -47,7 +47,7 @@
       },
       "discovered": {
         "title": "Devices found on the network",
-        "description": "Select a discovered device. Tapo Local then verifies its local protocol and identity before adding it. Already configured devices are hidden.",
+        "description": "Choose a device to add. {already_configured} previously configured Tapo Local device(s) were found and hidden. No existing entries will be changed.",
         "data": {
           "discovered_host": "Discovered device"
         }
@@ -67,14 +67,18 @@
       "invalid_host": "Enter a valid IP address or hostname, without a URL, port, or path.",
       "device_identity_unavailable": "This entry has no verifiable device identity. The address was not changed to avoid connecting to a different device.",
       "wrong_device": "A different device responded at that address. The existing IP address was not changed.",
-      "invalid_scan_target": "Use an IPv4 address on a private LAN, or 255.255.255.255. CIDR notation and hostnames are not supported.",
+      "invalid_scan_target": "Enter an RFC1918 IPv4 address or CIDR from /16 to /32 (for example 172.20.0.0/16), or 255.255.255.255. Wider and public networks are blocked.",
       "scan_failed": "The network scan failed. Check Home Assistant networking and try manual IP setup.",
-      "no_devices_found": "No new supported devices replied to the broadcast. Try your VLAN's broadcast address, check UDP 9999/20002/20004, or enter a device IP manually.",
+      "no_devices_found": "No new supported devices answered. Already configured devices are hidden. Confirm that Home Assistant can reach the VLAN's UDP ports 9999, 20002 and 20004; sleeping devices may require manual IP setup.",
       "invalid_selection": "Select a device from the current discovery results."
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "no_devices_found": "No devices are available from this scan; restart setup to try again."
+      "no_devices_found": "No devices are available from this scan; restart setup to try again.",
+      "scan_not_started": "No scan is currently running. Restart the integration setup to scan again."
+    },
+    "progress": {
+      "scanning": "Scanning the requested network for Tapo/Kasa devices"
     }
   },
   "options": {

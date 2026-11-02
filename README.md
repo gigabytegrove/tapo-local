@@ -86,16 +86,18 @@ After installation and restart:
 1. Go to **Settings -> Devices & services**.
 2. Select **Add integration**.
 3. Choose **Tapo Local**.
-4. Leave **Device IP address or hostname** empty and submit to start a local UDP scan, or enter a host for manual setup.
-5. Select a supported, not-yet-configured discovery result and complete local authentication if required.
+4. Leave **Device IP address or hostname** blank, enter the preferred **Discovery target** (for example `172.20.0.0/16`), and submit to scan; alternatively enter a device host for manual setup.
+5. When scanning completes, select a newly found device. Previously registered Tapo Local devices are hidden and counted. Complete local authentication if required.
 
 Tapo Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
 
 ### LAN auto-discovery
 
-Tapo Local provides **on-demand local network discovery** in Home Assistant's Add integration flow. Leave the host field blank and submit to search, then select a result. The scan uses legacy XOR UDP 9999 and modern TDP UDP 20002/20004. It takes roughly four seconds and never stores account credentials, tries cloud login, or creates entries without confirmation. Existing configured devices are omitted based on their saved host or their reported stable device ID; selection always uses the current local device verification and authentication flow.
+Tapo Local provides **on-demand local network discovery** in Home Assistant's Add integration flow. Leave the device host field empty, enter a **CIDR network** such as `172.20.0.0/16` in the Discovery target field and submit. The screen displays scan progress, then a list of newly detected compatible devices with their names, models and IP addresses. Devices already configured in Tapo Local are **hidden** by stable device ID or saved IP, and the setup screen reports how many were hidden. Selecting a new device invokes the existing local identity and authentication checks.
 
-The default target `255.255.255.255` reaches the local broadcast domain. For devices on a different VLAN, you may enter a **directed IPv4 broadcast target** such as `172.20.0.255`, but your network must explicitly forward those broadcasts. Many routers block them; scanning does not work across such VLANs without network changes. A direct IP address or hostname continues to work across routed VLANs, including for a sleeping DL100 that does not respond to broadcasts. No subnet sweep, password search, continuous scheduled scan, or uncontrolled device enrollment is performed.
+**Network behavior:** The default target `255.255.255.255` runs a brief LAN broadcast scan. A private IPv4 CIDR such as `172.20.0.0/16` sends local UDP queries to **every usable address** in that CIDR, rather than relying on cross-VLAN broadcasts. The integration uses XOR UDP 9999 and TDP UDP 20002/20004, caps traffic at **256 hosts per second** in 32-host batches, gathers replies as it scans, and keeps at most 512 valid devices. A `/16` includes 65,534 usable addresses and can take several minutes. Wider or public networks are rejected. A single private IPv4 address and directed-broadcast targets remain valid for targeted scans.
+
+**Important:** The scan can only find devices that reply to these discovery packets. Home Assistant must have permitted UDP connectivity to the target VLAN (including return traffic). Sleeping DL100 locks, firewalled hosts, and devices with discovery disabled may be missed; add those by IP address manually. CIDR discovery does not use TP-Link cloud, automatically register devices, alter existing entries, or perform TCP host sweeps. This is not continuous/background discovery.
 
 ## Change a device IP address
 

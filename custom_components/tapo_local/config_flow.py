@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import logging
@@ -231,6 +232,9 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._pending_dl100: dict[str, Any] | None = None
         self._pending_smart: dict[str, Any] | None = None
         self._discovered: dict[str, dict[str, str]] = {}
+        self._scan_task: asyncio.Task[list[dict[str, str]]] | None = None
+        self._scan_error: str | None = None
+        self._configured_on_scan = 0
         self._pending_dl100_reconfigure_host: str | None = None
         self._pending_dl100_reconfigure_entry_id: str | None = None
 
@@ -244,34 +248,24 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = str(user_input.get(CONF_HOST) or "").strip()
             if not host:
-                target = str(user_input.get(CONF_SCAN_TARGET) or DEFAULT_DISCOVERY_TARGET).strip()
+                target = str(
+                    user_input.get(CONF_SCAN_TARGET) or DEFAULT_DISCOVERY_TARGET
+                ).strip()
                 try:
                     target = validate_discovery_target(target)
                 except ValueError:
                     errors[CONF_SCAN_TARGET] = "invalid_scan_target"
                 else:
-                    try:
-                        found = await async_scan_local_devices(target)
-                    except OSError:
-                        _LOGGER.exception("Tapo Local LAN discovery failed")
-                        errors["base"] = "scan_failed"
-                    else:
-                        existing = tuple(self._async_current_entries())
-                        self._discovered = {
-                            item["host"]: item
-                            for item in found
-                            if not any(
-                                entry.data.get(CONF_HOST) == item["host"]
-                                or (
-                                    item.get("device_id")
-                                    and entry.unique_id == item["device_id"]
-                                )
-                                for entry in existing
-                            )
-                        }
-                        if self._discovered:
-                            return await self.async_step_discovered()
-                        errors["base"] = "no_devices_found"
+                    # A config-flow progress step keeps large CIDR scans responsive.
+                    self._discovered = {}
+                    self._scan_error = None
+                    self._configured_on_scan = 0
+                    self._scan_task = self.hass.async_create_task(
+                        async_scan_local_devices(
+                            target, progress_callback=self.async_update_progress
+                        )
+                    )
+                    return await self.async_step_scan()
                 return self.async_show_form(
                     step_id="user", data_schema=USER_SCHEMA, errors=errors
                 )
@@ -425,13 +419,70 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_scan(
+        self, user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Show ongoing scan progress and import its result only on completion."""
+        if self._scan_task is None:
+            return self.async_abort(reason="scan_not_started")
+        if not self._scan_task.done():
+            return self.async_show_progress(
+                step_id="scan",
+                progress_action="scanning",
+                progress_task=self._scan_task,
+            )
+
+        try:
+            found = self._scan_task.result()
+        except (OSError, ValueError):
+            _LOGGER.exception("Tapo Local subnet discovery failed")
+            self._scan_error = "scan_failed"
+            found = []
+        except asyncio.CancelledError:
+            self._scan_error = "scan_failed"
+            found = []
+        finally:
+            self._scan_task = None
+
+        existing = tuple(self._async_current_entries())
+        self._configured_on_scan = sum(
+            1 for item in found
+            if any(
+                entry.data.get(CONF_HOST) == item["host"]
+                or (
+                    item.get("device_id")
+                    and entry.unique_id == item["device_id"]
+                )
+                for entry in existing
+            )
+        )
+        self._discovered = {
+            item["host"]: item
+            for item in found
+            if not any(
+                entry.data.get(CONF_HOST) == item["host"]
+                or (
+                    item.get("device_id")
+                    and entry.unique_id == item["device_id"]
+                )
+                for entry in existing
+            )
+        }
+        if not self._discovered and not self._scan_error:
+            self._scan_error = "no_devices_found"
+        return self.async_show_progress_done(next_step_id="discovered")
+
     async def async_step_discovered(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Let the user select a discovered device before normal verification."""
         if not self._discovered:
-            return self.async_abort(reason="no_devices_found")
+            return self.async_show_form(
+                step_id="user",
+                data_schema=USER_SCHEMA,
+                errors={"base": self._scan_error or "no_devices_found"},
+            )
         if user_input is not None:
             host = str(user_input.get(CONF_DISCOVERED_HOST) or "")
             if host not in self._discovered:
@@ -444,6 +495,9 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         })
                     }),
                     errors={CONF_DISCOVERED_HOST: "invalid_selection"},
+                    description_placeholders={
+                        "already_configured": str(self._configured_on_scan),
+                    },
                 )
             # All devices enter the existing, authenticated local setup flow.
             return await self.async_step_user({CONF_HOST: host})
@@ -455,6 +509,9 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     for addr, item in self._discovered.items()
                 })
             }),
+            description_placeholders={
+                "already_configured": str(self._configured_on_scan),
+            },
         )
 
     @staticmethod
