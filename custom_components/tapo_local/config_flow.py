@@ -48,11 +48,19 @@ from .const import (
 )
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 from .discovery import async_targeted_tdp_discovery
+from .network_scan import DEFAULT_DISCOVERY_TARGET, async_scan_local_devices, validate_discovery_target
 
 
 _LOGGER = logging.getLogger(__name__)
 
-USER_SCHEMA = vol.Schema({vol.Required(CONF_HOST): cv.string})
+CONF_SCAN_TARGET = "scan_target"
+CONF_DISCOVERED_HOST = "discovered_host"
+USER_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST, default=""): cv.string,
+        vol.Optional(CONF_SCAN_TARGET, default=DEFAULT_DISCOVERY_TARGET): cv.string,
+    }
+)
 SMART_CREDENTIALS_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): cv.string,
@@ -222,6 +230,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._pending_dl100: dict[str, Any] | None = None
         self._pending_smart: dict[str, Any] | None = None
+        self._discovered: dict[str, dict[str, str]] = {}
         self._pending_dl100_reconfigure_host: str | None = None
         self._pending_dl100_reconfigure_entry_id: str | None = None
 
@@ -233,7 +242,44 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            host = user_input[CONF_HOST].strip()
+            host = str(user_input.get(CONF_HOST) or "").strip()
+            if not host:
+                target = str(user_input.get(CONF_SCAN_TARGET) or DEFAULT_DISCOVERY_TARGET).strip()
+                try:
+                    target = validate_discovery_target(target)
+                except ValueError:
+                    errors[CONF_SCAN_TARGET] = "invalid_scan_target"
+                else:
+                    try:
+                        found = await async_scan_local_devices(target)
+                    except OSError:
+                        _LOGGER.exception("Tapo Local LAN discovery failed")
+                        errors["base"] = "scan_failed"
+                    else:
+                        existing = tuple(self._async_current_entries())
+                        self._discovered = {
+                            item["host"]: item
+                            for item in found
+                            if not any(
+                                entry.data.get(CONF_HOST) == item["host"]
+                                or (
+                                    item.get("device_id")
+                                    and entry.unique_id == item["device_id"]
+                                )
+                                for entry in existing
+                            )
+                        }
+                        if self._discovered:
+                            return await self.async_step_discovered()
+                        errors["base"] = "no_devices_found"
+                return self.async_show_form(
+                    step_id="user", data_schema=USER_SCHEMA, errors=errors
+                )
+            if not _valid_reconfigure_host(host):
+                errors[CONF_HOST] = "invalid_host"
+                return self.async_show_form(
+                    step_id="user", data_schema=USER_SCHEMA, errors=errors
+                )
 
             # If an authorized DL100 session import explicitly belongs to this
             # host, use it before python-kasa/XOR or TDP. The encrypted DLKLAP
@@ -378,6 +424,45 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=USER_SCHEMA,
             errors=errors,
         )
+
+    async def async_step_discovered(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Let the user select a discovered device before normal verification."""
+        if not self._discovered:
+            return self.async_abort(reason="no_devices_found")
+        if user_input is not None:
+            host = str(user_input.get(CONF_DISCOVERED_HOST) or "")
+            if host not in self._discovered:
+                return self.async_show_form(
+                    step_id="discovered",
+                    data_schema=vol.Schema({
+                        vol.Required(CONF_DISCOVERED_HOST): vol.In({
+                            addr: self._discovery_label(item)
+                            for addr, item in self._discovered.items()
+                        })
+                    }),
+                    errors={CONF_DISCOVERED_HOST: "invalid_selection"},
+                )
+            # All devices enter the existing, authenticated local setup flow.
+            return await self.async_step_user({CONF_HOST: host})
+        return self.async_show_form(
+            step_id="discovered",
+            data_schema=vol.Schema({
+                vol.Required(CONF_DISCOVERED_HOST): vol.In({
+                    addr: self._discovery_label(item)
+                    for addr, item in self._discovered.items()
+                })
+            }),
+        )
+
+    @staticmethod
+    def _discovery_label(item: dict[str, str]) -> str:
+        """Keep device-originated text short and safe for config-flow labels."""
+        name = "".join(ch for ch in item["alias"] if ch.isprintable())[:48]
+        model = "".join(ch for ch in item["model"] if ch.isprintable())[:24]
+        return f"{name} ({model}) — {item['host']}"
 
     async def async_step_smart_credentials(
         self,

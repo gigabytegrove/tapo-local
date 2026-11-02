@@ -31,7 +31,8 @@ HACS is the recommended installation method.
 6. Restart Home Assistant.
 7. Open **Settings -> Devices & services -> Add integration**.
 8. Search for **Tapo Local**.
-9. Enter the local IP address or hostname of the device you want to add.
+9. Leave the device address blank and submit to scan for supported devices, or enter its IP address/hostname to set it up manually.
+10. Select a discovered device and complete any required authorization.
 
 If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, Tapo Local will request the TP-Link account credentials authorized for that device during initial setup. For the DL100 specifically, the owner credentials are retained in Home Assistant private storage so Tapo Local can automatically mint a fresh DLKLAP session when the lock invalidates the old one.
 
@@ -52,7 +53,7 @@ If a supported modern Kasa/Tapo device uses authenticated AES/KLAP, Tapo Local w
 
 3. Restart Home Assistant.
 4. Open **Settings -> Devices & services -> Add integration**.
-5. Search for **Tapo Local** and add the device by IP address or hostname.
+5. Search for **Tapo Local** and leave the address blank to scan the LAN, or enter the device IP address/hostname.
 
 For Home Assistant Container installations, the integration directory must be inside the configuration volume mounted at `/config`.
 
@@ -85,10 +86,16 @@ After installation and restart:
 1. Go to **Settings -> Devices & services**.
 2. Select **Add integration**.
 3. Choose **Tapo Local**.
-4. Enter the device IP address or hostname.
-5. Complete local authentication if the device requires it.
+4. Leave **Device IP address or hostname** empty and submit to start a local UDP scan, or enter a host for manual setup.
+5. Select a supported, not-yet-configured discovery result and complete local authentication if required.
 
 Tapo Local does not silently fall back to TP-Link cloud control. If a device cannot be reached or authenticated locally, setup reports the local failure instead.
+
+### LAN auto-discovery
+
+Tapo Local provides **on-demand local network discovery** in Home Assistant's Add integration flow. Leave the host field blank and submit to search, then select a result. The scan uses legacy XOR UDP 9999 and modern TDP UDP 20002/20004. It takes roughly four seconds and never stores account credentials, tries cloud login, or creates entries without confirmation. Existing configured devices are omitted based on their saved host or their reported stable device ID; selection always uses the current local device verification and authentication flow.
+
+The default target `255.255.255.255` reaches the local broadcast domain. For devices on a different VLAN, you may enter a **directed IPv4 broadcast target** such as `172.20.0.255`, but your network must explicitly forward those broadcasts. Many routers block them; scanning does not work across such VLANs without network changes. A direct IP address or hostname continues to work across routed VLANs, including for a sleeping DL100 that does not respond to broadcasts. No subnet sweep, password search, continuous scheduled scan, or uncontrolled device enrollment is performed.
 
 ## Change a device IP address
 

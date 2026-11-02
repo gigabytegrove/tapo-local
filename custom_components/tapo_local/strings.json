@@ -3,10 +3,11 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a local TP-Link/Kasa/Tapo device",
-        "description": "Connect directly to a supported TP-Link, Kasa, or Tapo device by IP address or hostname. Normal device control is local. DL100 requires brief TP-Link cloud access only when a fresh DLKLAP session must be created.",
+        "title": "Find or add a local TP-Link/Kasa/Tapo device",
+        "description": "Leave the address blank and select Submit to scan the LAN, or enter an address to add a device manually. For a routed VLAN, enter its IPv4 broadcast destination (for example 172.20.0.255); the network must permit directed broadcasts. Discovery never adds a device without your selection and any required authentication.",
         "data": {
-          "host": "IP address or hostname"
+          "host": "Device IP address or hostname (leave blank to scan)",
+          "scan_target": "IPv4 discovery broadcast target (optional)"
         }
       },
       "dl100_session": {
@@ -43,6 +44,13 @@
           "username": "TP-Link/Tapo owner account email",
           "password": "TP-Link/Tapo owner account password"
         }
+      },
+      "discovered": {
+        "title": "Devices found on the network",
+        "description": "Select a discovered device. Tapo Local then verifies its local protocol and identity before adding it. Already configured devices are hidden.",
+        "data": {
+          "discovered_host": "Discovered device"
+        }
       }
     },
     "error": {
@@ -58,10 +66,15 @@
       "dl100_auth_failed": "Tapo Local could not create a DL100 session. Verify the owner account credentials, Internet access for session authorization, and local reachability to the lock.",
       "invalid_host": "Enter a valid IP address or hostname, without a URL, port, or path.",
       "device_identity_unavailable": "This entry has no verifiable device identity. The address was not changed to avoid connecting to a different device.",
-      "wrong_device": "A different device responded at that address. The existing IP address was not changed."
+      "wrong_device": "A different device responded at that address. The existing IP address was not changed.",
+      "invalid_scan_target": "Use an IPv4 address on a private LAN, or 255.255.255.255. CIDR notation and hostnames are not supported.",
+      "scan_failed": "The network scan failed. Check Home Assistant networking and try manual IP setup.",
+      "no_devices_found": "No new supported devices replied to the broadcast. Try your VLAN's broadcast address, check UDP 9999/20002/20004, or enter a device IP manually.",
+      "invalid_selection": "Select a device from the current discovery results."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "no_devices_found": "No devices are available from this scan; restart setup to try again."
     }
   },
   "options": {
