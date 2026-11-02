@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.8
+
+- Prevent duplicate setup of a Tapo Local device by matching existing host or stable DL100 ID before attempting TP-Link cloud authorization; preserve active local lock sessions.
+- Add explicit control-key error classification, including TP-Link's documented 15033 owner-account or superseded-challenge condition.
+- Validate control-key responses without logging cloud payloads, credentials, tokens, or session keys.
+- Keep one Home Assistant config entry per device; do not attempt a destructive, untested consolidation of existing config entries.
+- Add regression tests for early duplicate prevention and error-code parsing.
+
+
 ## 0.7.7 (dev candidate)
 
 - Auto-detect enabled Home Assistant interface IPv4 CIDRs (and corresponding masks) when no discovery target is provided; still allow an explicit routed-VLAN CIDR.

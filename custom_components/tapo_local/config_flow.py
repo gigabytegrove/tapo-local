@@ -276,6 +276,15 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     step_id="user", data_schema=USER_SCHEMA, errors=errors
                 )
 
+            # Do not start a new DLKLAP handshake for an already registered
+            # device. Cloud provisioning can invalidate its usable local
+            # session. Reconfigure the existing entry instead.
+            if any(
+                str(entry.data.get(CONF_HOST) or "").strip() == host
+                for entry in self._async_current_entries()
+            ):
+                return self.async_abort(reason="already_configured")
+
             # If an authorized DL100 session import explicitly belongs to this
             # host, use it before python-kasa/XOR or TDP. The encrypted DLKLAP
             # exchange itself is the authoritative verification.
@@ -371,6 +380,14 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             model.split("(", 1)[0].strip() == "DL100"
                             and dtype == "SMART.TAPOLOCK"
                         ):
+                            # A stable local ID can match an existing lock
+                            # even after DHCP address changes. Never renew it
+                            # as a second config entry.
+                            if device_id and any(
+                                entry.unique_id == device_id
+                                for entry in self._async_current_entries()
+                            ):
+                                return self.async_abort(reason="already_configured")
                             self._pending_dl100 = {
                                 "host": host,
                                 "model": model or "DL100",
@@ -627,6 +644,17 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
+            pending_host = self._pending_dl100["host"]
+            pending_id = self._pending_dl100.get("device_id")
+            # A config flow can remain open while another flow registers
+            # this device. Check again immediately before cloud bootstrap.
+            if any(
+                entry.data.get(CONF_HOST) == pending_host
+                or (pending_id and entry.unique_id == pending_id)
+                for entry in self._async_current_entries()
+            ):
+                return self.async_abort(reason="already_configured")
+
             auth_module = await async_import_module(
                 self.hass, f"{__package__}.dl100_auth"
             )
@@ -655,7 +683,11 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "handshake0": "dl100_local_handshake_failed",
                     "handshake1": "dl100_local_handshake_failed",
                     "handshake2": "dl100_local_handshake_failed",
-                    "control_key": "dl100_control_key_failed",
+                    "control_key": (
+                        "dl100_control_key_account_mismatch"
+                        if getattr(exc, "code", None) == 15033
+                        else "dl100_control_key_failed"
+                    ),
                 }.get(getattr(exc, "stage", None), "dl100_auth_failed")
             except Exception:
                 _LOGGER.exception(

@@ -105,6 +105,12 @@ DL100 setup needs owner-account authorization for a fresh DLKLAP session. When i
 
 If the local discovery response omits a DL100 device ID, the integration no longer substitutes its IP address as the cloud device ID: it resolves the lock through the authenticated device list, and refuses to guess when multiple locks make the match ambiguous.
 
+Existing devices should not be re-added when testing discovery or troubleshooting DL100 account authorization: Tapo Local now rejects an already configured IP/stable device identity before attempting cloud bootstrap. For previously added locks, use their existing entry and **Reconfigure** if the IP has changed. A cloud control-key response with code `15033` indicates an owner/challenge mismatch; confirm that the account is the original owner and that no competing controller has started another DL100 handshake.
+
+### Why Home Assistant shows separate entry sections
+
+Tapo Local currently uses **one configuration entry per device**. Home Assistant therefore shows an integration entry for each registered switch or lock, each with its own credentials, local protocol, options, and lifecycle. The common Tapo Local integration header groups the devices by integration, but its entry cards are intentionally separate. Migrating existing entries into one hub would require a tested state/session/device/entity migration, so an update must not silently merge or delete these working entries.
+
 ## Change a device IP address
 
 If a device receives a different DHCP address or moves to another subnet, **do not delete and re-add it**.

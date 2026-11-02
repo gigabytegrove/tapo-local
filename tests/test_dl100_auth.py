@@ -47,6 +47,39 @@ class DL100ProvisioningTests(unittest.TestCase):
         ):
             self.assertFalse(auth._wake_lock("172.20.0.100"))
 
+
+    def test_control_key_15033_is_safe_and_actionable(self):
+        with self.assertRaises(auth.DL100ProvisioningError) as caught:
+            auth._parse_control_key_response(
+                b'{"error_code":15033,"msg":"private user info"}'
+            )
+        self.assertEqual(caught.exception.stage, "control_key")
+        self.assertEqual(caught.exception.code, 15033)
+        self.assertNotIn("private user info", str(caught.exception))
+
+    def test_control_key_accepts_64_character_hex_result(self):
+        key = "ABCDEF0123456789" * 4
+        self.assertEqual(
+            auth._parse_control_key_response(
+                ('{"result":{"controlKey":"' + key + '"}}').encode()
+            ), key
+        )
+
+    def test_control_key_missing_reports_only_safe_numeric_code(self):
+        with self.assertRaises(auth.DL100ProvisioningError) as caught:
+            auth._parse_control_key_response(
+                b'{"code":412,"message":"secret do not print"}'
+            )
+        self.assertEqual(caught.exception.code, 412)
+        self.assertNotIn("secret do not print", str(caught.exception))
+
+    def test_control_key_invalid_or_malformed_payload_fails_closed(self):
+        for body in (b"not-json", b"[]", b"{}", b'{"result":{"controlKey":"short"}}'):
+            with self.subTest(body=body), self.assertRaises(
+                auth.DL100ProvisioningError
+            ):
+                auth._parse_control_key_response(body)
+
     def test_missing_local_id_must_resolve_cloud_device(self):
         reply = b'{"error_code":0,"result":{"deviceList":[{"deviceModel":"DL100(US)","deviceId":"cloud-id"}]}}'
         with patch.object(auth, "_request", return_value=(200, {}, reply)):
