@@ -1,56 +1,81 @@
 # Changelog
 
+Release notes tell you what changed, what to do after updating, and what is still limited. New releases use their matching changelog section as GitHub release notes. [See all public releases](https://github.com/gigabytegrove/tapo-local/releases).
+
 ## 0.7.9
 
-- Repair multi-DL100 onboarding by authenticating the owner and listing available DL100 cloud IDs **before** local handshake0.
-- Match an exact TDP-reported device ID automatically when it exists in the owner's cloud list; otherwise require a deliberate lock choice (name and last six ID characters) instead of assuming a single DL100.
-- Exclude lock IDs already registered in Tapo Local from the owner selection list, recheck duplicates before provisioning, and preserve existing sessions, config entries and entities.
-- Keep credentials only in the in-progress config flow until local session verification; no tokens or raw cloud response bodies in logs.
-- Retain local-first lock operations and distinct owner-login, cloud-device, control-key and handshake errors.
+### Fixed
 
+- **Adding a second DL100:** The setup screen now finds the locks owned by your Tapo account before requesting a new encrypted connection. It no longer assumes an account contains only one lock.
+- When the lock cannot be identified automatically, you can select it by its name and the ending of its device ID.
+- Locks already registered in Tapo Local are hidden from the choices. Setup checks the chosen lock again before authorization.
+
+### Upgrade notes
+
+- Update through HACS and restart Home Assistant.
+- **Do not delete a working DL100 entry.** Add the second lock using its own IP address and choose the correct lock when prompted.
+- Your existing entries, saved local lock sessions, and entity IDs are not migrated or reset.
+
+### Known limitations
+
+- Creating a new DL100 encrypted session still requires TP-Link's owner-account authorization service. Automated tests do not prove that the cloud service accepts every firmware or account.
 
 ## 0.7.8
 
-- Prevent duplicate setup of a Tapo Local device by matching existing host or stable DL100 ID before attempting TP-Link cloud authorization; preserve active local lock sessions.
-- Add explicit control-key error classification, including TP-Link's documented 15033 owner-account or superseded-challenge condition.
-- Validate control-key responses without logging cloud payloads, credentials, tokens, or session keys.
-- Keep one Home Assistant config entry per device; do not attempt a destructive, untested consolidation of existing config entries.
-- Add regression tests for early duplicate prevention and error-code parsing.
+### Fixed
 
+- Blocked setup attempts that would add an already registered lock or switch a second time.
+- Added a clearer error for control-key code 15033, which can mean an owner-account mismatch or a handshake challenge that is no longer valid.
 
-## 0.7.7 (dev candidate)
+### Security
 
-- Auto-detect enabled Home Assistant interface IPv4 CIDRs (and corresponding masks) when no discovery target is provided; still allow an explicit routed-VLAN CIDR.
-- Add bounded legacy XOR TCP/9999 identification when devices do not reply to UDP discovery.
-- Never substitute a DL100 IP address as the TP-Link cloud device ID when discovery lacks a stable ID; resolve via the authorized cloud device list instead.
-- Classify DL100 owner login, cloud device resolution, control-key issuance and LAN handshake failures in setup without exposing account tokens or credentials.
-- Preserve existing device entries, sessions, explicit authorization and local-first behavior.
-- Wake a sleeping DL100 radio with best-effort TCP connects before handshake0, without repeating handshake0 or mutating lock state.
-- Hold this version on the dev branch until testing and release approval.
+- Checks malformed control-key replies without printing passwords, tokens, or full cloud responses in the logs.
 
+### Upgrade notes
+
+- Keep your existing entries. Use **Reconfigure** if a device's IP address changes.
+
+## 0.7.7
+
+### Added
+
+- Finds Home Assistant's enabled network addresses and subnet masks automatically when the discovery field is empty.
+- Lets you scan another private network such as 172.20.0.0/16. You do not enter a subnet mask separately.
+- Uses an additional TCP port 9999 check for legacy Kasa switches that do not answer UDP discovery.
+
+### Fixed
+
+- No longer uses a DL100's IP address as a substitute for its TP-Link cloud device ID.
+- Makes DL100 errors more specific: login, finding the lock, obtaining a control key, or completing the local encrypted connection.
+- Added a brief wake check for sleeping DL100 locks before starting a handshake.
+
+### Known limitations
+
+- Scanning a large network takes several minutes, and router/firewall rules may still block discovery. Enter the device IP address manually when necessary.
 
 ## 0.7.6
 
-### Private IPv4 CIDR discovery and safe duplicate handling
+### Added
 
-- Allow on-demand IPv4 CIDR discovery including `172.20.0.0/16` instead of rejecting the slash notation.
-- Probe each usable CIDR address via local UDP 9999/20002/20004 at a bounded 256 hosts/second, with progress UI, a response cap, and a finite post-scan listening period.
-- Keep single-IP, broadcast and manual host setup; reject public networks and CIDRs wider than /16.
-- Filter already configured integration devices by stable device identity or saved IP; show a count of skipped entries and do not alter configured devices.
-- Preserve explicit device selection, local protocol verification, normal credential flows, and local-only discovery.
-- Add regression tests for CIDR validation, rate-limited send-loop behavior, response filtering, progress and duplicate suppression.
+- Allowed private IP ranges such as 172.20.0.0/16 in the network discovery field.
+- Added scan progress, bounded request rates, and a limit on devices kept from one scan.
 
+### Fixed
+
+- Hides devices that are already configured by their stored address or device ID.
+- Keeps manual IP setup available.
 
 ## 0.7.5
 
-### On-demand LAN auto-discovery
+### Added
 
-- Added a bounded, local-only broadcast scan to the Add Integration flow. Leave the host blank and submit to find supported TP-Link, Kasa and Tapo devices without entering their addresses.
-- Discover legacy XOR switches/plugs over UDP 9999 and newer SMART/DL100 candidates over TDP UDP 20002/20004.
-- Show model, device label and address, exclude already configured devices, and require explicit selection before entering the existing protocol/identity verification and authorization flow.
-- Permit a private IPv4 directed-broadcast target for installations with multiple VLANs; preserve direct IP/hostname setup when broadcasts are blocked or a sleeping DL100 does not respond.
-- Avoid cloud access, stored passwords, continuous scans, network-wide host sweeps and automatic device enrollment during discovery.
-- Add offline protocol parsing, input validation and configuration-flow regression tests.
+- Added on-demand discovery for compatible devices on the local broadcast network.
+- Shows found devices by name, model, and IP address, and skips devices already registered.
+
+### Known limitations
+
+- The first broadcast scan could miss devices on separate VLANs. Later releases added CIDR and adapter-based scanning.
+
 
 ## 0.7.4
 
@@ -71,7 +96,7 @@
 - Preserved polling options, existing local protocol parameters, stored credential hashes, and private DL100 sessions.
 - Verified the new device's identity before accepting a changed address; unreachable, unsupported or mismatched devices do not overwrite the original host.
 - Added regression coverage for XOR, SMART/KLAP and DL100 address changes, IPv4/IPv6 input, authentication and failed connections.
-- Set python-kasa minimum version to redacted.invalid for Home Assistant compatibility and future Home Assistant-managed upgrades; removed the redundant explicit cryptography requirement from the manifest.
+- Set python-kasa minimum version to 0.11.0.1 for Home Assistant compatibility and future Home Assistant-managed upgrades; removed the redundant explicit cryptography requirement from the manifest.
 
 ## 0.7.1
 

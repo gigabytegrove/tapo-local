@@ -38,7 +38,7 @@ The device model and firmware matter. See the [supported-device list](SUPPORTED_
 
 1. In Home Assistant, open **HACS**.
 2. Open HACS's **three-dot menu** and select **Custom repositories**.
-3. Enter \`https://github.com/gigabytegrove/tapo-local\` as the repository address.
+3. Enter `https://github.com/gigabytegrove/tapo-local` as the repository address.
 4. Select **Integration** as the category and add the repository.
 5. Find **Tapo Local** in HACS and select **Download**.
 6. **Restart Home Assistant** to load the integration.
@@ -52,15 +52,15 @@ You can also use the [Add to HACS badge](https://my.home-assistant.io/redirect/h
 
 1. Open the [latest public release](https://github.com/gigabytegrove/tapo-local/releases/latest) on GitHub and download its **Source code (zip)**.
 2. Unzip it on your computer.
-3. Copy the **entire** \`custom_components/tapo_local\` folder into your Home Assistant configuration folder. The final location inside Home Assistant must be \`/config/custom_components/tapo_local/\`, containing \`manifest.json\` and the other integration files.
+3. Copy the **entire** `custom_components/tapo_local` folder into your Home Assistant configuration folder. The final location inside Home Assistant must be `/config/custom_components/tapo_local/`, containing `manifest.json` and the other integration files.
 4. Restart Home Assistant.
 5. Follow steps 7–9 above to add a device.
 
-If you use Home Assistant Container, copy the folder into the host directory mounted as \`/config\` inside the container. Do not copy it into a temporary folder inside a running container.
+If you use Home Assistant Container, copy the folder into the host directory mounted as `/config` inside the container. Do not copy it into a temporary folder inside a running container.
 
 ### Python dependency: no manual installation needed
 
-Home Assistant installs Tapo Local's required \`python-kasa>=0.11.0.1\` dependency automatically from the integration manifest. **Do not run \`pip install\` inside a normal Home Assistant installation.** For a separate developer Python environment, see [Contributing](CONTRIBUTING.md).
+Home Assistant installs Tapo Local's required `python-kasa>=0.11.0.1` dependency automatically from the integration manifest. **Do not run `pip install` inside a normal Home Assistant installation.** For a separate developer Python environment, see [Contributing](CONTRIBUTING.md).
 
 ## Find devices automatically
 
@@ -70,9 +70,9 @@ Home Assistant installs Tapo Local's required \`python-kasa>=0.11.0.1\` dependen
 4. Select **Submit** and let the scan finish.
 5. Select a found device. Devices already added to Tapo Local are hidden from the list.
 
-**Devices on a separate VLAN or network?** If Home Assistant cannot find that network automatically, put its **network address in CIDR form** in the **Network to scan** field. For example, \`172.20.0.0/16\` includes the subnet information; **you do not need to enter a subnet mask separately**.
+**Devices on a separate VLAN or network?** If Home Assistant cannot find that network automatically, put its **network address in CIDR form** in the **Network to scan** field. For example, `172.20.0.0/16` includes the subnet information; **you do not need to enter a subnet mask separately**.
 
-A large network takes longer to scan. A \`/16\` contains 65,534 usable device addresses and can take several minutes. Scanning uses local network discovery requests and checks legacy Kasa devices on TCP port 9999. It does **not** connect your devices to your TP-Link account or add them automatically. Firewalls, sleeping devices, or unsupported protocols may prevent a device from appearing.
+A large network takes longer to scan. A `/16` contains 65,534 usable device addresses and can take several minutes. Scanning uses local network discovery requests and checks legacy Kasa devices on TCP port 9999. It does **not** connect your devices to your TP-Link account or add them automatically. Firewalls, sleeping devices, or unsupported protocols may prevent a device from appearing.
 
 ## Add a device by IP address
 
@@ -125,7 +125,7 @@ Home Assistant shows **one entry for each device** because that is how Tapo Loca
 2. Restart Home Assistant.
 3. Open **Settings → Devices & services → Tapo Local** to check the integration version and your existing entries.
 
-Keep your working configuration entries. If you installed manually, replace only the \`custom_components/tapo_local\` code with the files from the latest release, then restart Home Assistant. Make a Home Assistant backup before changing integrations, particularly when you have a working smart-lock session.
+Keep your working configuration entries. If you installed manually, replace only the `custom_components/tapo_local` code with the files from the latest release, then restart Home Assistant. Make a Home Assistant backup before changing integrations, particularly when you have a working smart-lock session.
 
 ## Supported device types
 
@@ -150,7 +150,7 @@ The currently documented hands-on test models are **KS200, KS200M, and DL100**. 
 - Tapo Local does not use a cloud-control fallback for normal device commands.
 - Use your router/firewall to permit Home Assistant to reach only the device networks and local ports it needs.
 
-For maintainers: the original Home Assistant integration domain is \`tapo_local\`, and it remains unchanged for upgrades. The underlying device protocols and architecture are documented in [Supported devices](SUPPORTED_DEVICES.md) and the source code. Third-party dependencies and licensing are in [THIRD_PARTY.md](THIRD_PARTY.md).
+For maintainers: the original Home Assistant integration domain is `tapo_local`, and it remains unchanged for upgrades. The underlying device protocols and architecture are documented in [Supported devices](SUPPORTED_DEVICES.md) and the source code. Third-party dependencies and licensing are in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## Get help
 
@@ -162,9 +162,9 @@ Feature suggestions and code contributions are welcome. See [CONTRIBUTING.md](CO
 
 ## Development and releases
 
-- **\`dev\` is the only branch for ongoing work.** Changes, documentation updates, and tests belong there.
-- **\`main\` is the public release branch.** Work reaches \`main\` through a reviewed pull request from \`dev\` after validation.
-- Public version numbers come from \`custom_components/tapo_local/manifest.json\`. A documentation-only edit on \`dev\` does not change that version or create a new release.
+- **`dev` is the only branch for ongoing work.** Changes, documentation updates, and tests belong there.
+- **`main` is the public release branch.** Work reaches `main` through a reviewed pull request from `dev` after validation.
+- Public version numbers come from `custom_components/tapo_local/manifest.json`. A documentation-only edit on `dev` does not change that version or create a new release.
 - Read the [changelog](CHANGELOG.md) for what changed, and use [GitHub Releases](https://github.com/gigabytegrove/tapo-local/releases) for public versions. Development commits are not advertised as installed releases.
 
 This is an open-source project maintained by **Gigabyte Grove**. The original project author is **Brad Trammell**.
