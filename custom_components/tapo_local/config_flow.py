@@ -46,6 +46,7 @@ from .const import (
     TRANSPORT_DLKLAP,
     TRANSPORT_SMART,
     TRANSPORT_XOR,
+    is_supported_lock_model,
 )
 from .dependency import TPLinkLocalDependencyError, async_ensure_kasa
 from .discovery import async_targeted_tdp_discovery
@@ -311,7 +312,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 self._pending_dl100 = {
                     "host": host,
-                    "model": "DL100",
+                    "model": str(import_bundle.get("model") or "DL100"),
                     "device_type": "SMART.TAPOLOCK",
                     "device_id": import_bundle["device_id"],
                 }
@@ -361,7 +362,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         )
                         self._pending_dl100 = {
                             "host": host,
-                            "model": "DL100",
+                            "model": str(import_bundle.get("model") or "DL100"),
                             "device_type": "SMART.TAPOLOCK",
                             "device_id": import_bundle["device_id"],
                         }
@@ -379,7 +380,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             or ""
                         )
                         if (
-                            model.split("(", 1)[0].strip() == "DL100"
+                            is_supported_lock_model(model)
                             and dtype == "SMART.TAPOLOCK"
                         ):
                             # A stable local ID can match an existing lock
@@ -791,6 +792,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     device = DL100LocalDevice(
                         self._pending_dl100["host"],
                         session_state=session_state,
+                        model=self._pending_dl100.get("model"),
                     )
                     try:
                         state = await device.get_state()
@@ -961,6 +963,7 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._pending_dl100["host"],
                 session_state=candidate["session"],
                 session_saver=_save_candidate_session,
+                model=self._pending_dl100.get("model"),
             )
             try:
                 state = await device.get_state()
@@ -1098,7 +1101,9 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     try:
                         device = dl100_module.DL100LocalDevice(
-                            host, session_state=provisioned["session"]
+                            host,
+                            session_state=provisioned["session"],
+                            model=entry.data.get("model"),
                         )
                         state = await device.get_state()
                     except dl100_module.DL100ConnectionError:
@@ -1202,7 +1207,9 @@ class TPLinkLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     DL100LocalError = dl100_module.DL100LocalError
 
                     try:
-                        device = DL100LocalDevice(host, session_state=session)
+                        device = DL100LocalDevice(
+                            host, session_state=session, model=entry.data.get("model")
+                        )
                         state = await device.get_state()
                     except DL100ConnectionError:
                         errors["base"] = "cannot_connect"

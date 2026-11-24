@@ -23,6 +23,8 @@ from urllib.parse import quote
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from .const import is_supported_lock_model
+
 SESSION_COOKIE_NAME = "TP_SESSIONID"
 
 
@@ -154,6 +156,27 @@ def _cloud_login(
     return str(result["token"]), str(result["accountId"])
 
 
+def _decode_alias(value: str) -> str:
+    """Return a readable lock name from the cloud device list.
+
+    Tapo's getDeviceList returns nicknames base64-encoded (for example
+    "RnJvbnQgR2F0ZQ==" for "Front Gate"). Decode them when they
+    are valid base64 of printable UTF-8; otherwise keep the value unchanged.
+    """
+    text = value.strip()
+    if not text or len(text) % 4 or not all(
+        ch.isalnum() or ch in "+/=" for ch in text
+    ):
+        return text
+    try:
+        decoded = base64.b64decode(text, validate=True).decode("utf-8").strip()
+    except (ValueError, UnicodeDecodeError):
+        return text
+    if decoded and decoded.isprintable():
+        return decoded
+    return text
+
+
 def _owned_dl100_list(token: str) -> list[dict[str, str]]:
     """List owner-account DL100s without logging tokens, IDs or cloud payloads."""
     status, _, raw = _request(
@@ -190,9 +213,11 @@ def _owned_dl100_list(token: str) -> list[dict[str, str]]:
             continue
         model = str(item.get("deviceModel") or "")
         device_id = str(item.get("deviceId") or "").strip()
-        if "DL100" not in model.upper() or not device_id:
+        if not is_supported_lock_model(model) or not device_id:
             continue
-        alias = str(item.get("alias") or item.get("deviceName") or "DL100").strip()
+        alias = _decode_alias(
+            str(item.get("alias") or item.get("deviceName") or "")
+        ) or model or "Tapo lock"
         found[device_id] = {"device_id": device_id, "alias": alias[:90], "model": model}
     return sorted(found.values(), key=lambda x: (x["alias"].casefold(), x["device_id"]))
 
@@ -220,7 +245,7 @@ def _resolve_device_id(token: str, preferred_device_id: str | None) -> str:
     found = _owned_dl100_list(token)
     if len(found) != 1:
         raise DL100ProvisioningError(
-            "Multiple or no DL100 locks found; select the correct lock from "
+            "Multiple or no DL100/DL130 locks found; select the correct lock from "
             "the owner-account list before starting a session",
             stage="cloud_device",
         )

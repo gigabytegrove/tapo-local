@@ -20,6 +20,7 @@ This document separates:
 | KS200 | wall switch | IOT/XOR TCP 9999 | Verified |
 | KS200M | motion wall switch | IOT/XOR TCP 9999 | Verified |
 | DL100 | smart lock | DLKLAP HTTP 80 | Verified, including physical lock/unlock |
+| DL130 | smart lock | DLKLAP HTTP 80 | Verified, including physical lock/unlock (uses the DL100 backend) |
 
 ## Legacy Kasa IOT / XOR
 
@@ -207,6 +208,14 @@ Current verified behavior:
 - persistent private DLKLAP session storage
 
 Initial setup uses the original Tapo owner's credentials to authorize an encrypted local session. If your account contains multiple DL100s, setup lets you choose the correct lock when it cannot be matched automatically. Later lock commands use the local network; authorizing a new encrypted session still requires TP-Link cloud access.
+
+## Tapo DL130
+
+The DL130 identifies itself on the LAN as `SMART.TAPOLOCK` / `DL130(US)` and answers on HTTP port 80 with the same DLKLAP handshake as the DL100. Tapo Local therefore runs it on the DL100 backend: same setup flow, owner-account session authorization, entities and lock-state mapping (`lock_status` 0 = locked, 1 = unlocked).
+
+Verified on a DL130(US): setup through the owner account, lock status, battery, low-battery warning, and physical lock and unlock from Home Assistant with post-write state verification.
+
+DL130-only features such as palm-vein and fingerprint enrollment, the keypad and the doorbell button are not exposed.
 
 ## Not yet advertised
 

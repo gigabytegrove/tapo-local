@@ -21,6 +21,21 @@ TRANSPORT_XOR = "xor"
 TRANSPORT_SMART = "smart"
 TRANSPORT_DLKLAP = "dlklap"
 
+# Tapo locks that speak the DL100 local DLKLAP protocol (SMART.TAPOLOCK on
+# HTTP port 80). The DL130 reports device_model "DL130(US)" and uses the same
+# handshake, getLockStatus/getDeviceRunningInfo methods and lock_status values.
+SUPPORTED_LOCK_MODELS = ("DL100", "DL130")
+
+
+def lock_base_model(model: object) -> str:
+    """Return the base lock model without its region suffix, e.g. DL130(US) -> DL130."""
+    return str(model or "").split("(", 1)[0].strip().upper()
+
+
+def is_supported_lock_model(model: object) -> bool:
+    """Return True when a reported model is a DLKLAP lock this integration supports."""
+    return lock_base_model(model) in SUPPORTED_LOCK_MODELS
+
 DEFAULT_PORT = 9999
 DEFAULT_TIMEOUT = 5.0
 DEFAULT_POLL_INTERVAL = 5

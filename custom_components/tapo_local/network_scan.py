@@ -16,7 +16,11 @@ import socket
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from .const import SUPPORTED_LEGACY_DEVICE_TYPES, SUPPORTED_SMART_FAMILIES
+from .const import (
+    SUPPORTED_LEGACY_DEVICE_TYPES,
+    SUPPORTED_SMART_FAMILIES,
+    is_supported_lock_model,
+)
 from .discovery import _build_tdp_packet
 
 _LOGGER = logging.getLogger(__name__)
@@ -100,7 +104,7 @@ def _candidate_from_packet(
             if family not in SUPPORTED_SMART_FAMILIES and family != "SMART.TAPOLOCK":
                 return None
             model = str(identity.get("device_model") or "").split("(", 1)[0].strip()
-            if family == "SMART.TAPOLOCK" and model != "DL100":
+            if family == "SMART.TAPOLOCK" and not is_supported_lock_model(model):
                 return None
             if not model:
                 return None

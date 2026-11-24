@@ -77,7 +77,10 @@ class ReleaseNotesTests(unittest.TestCase):
         ):
             self.assertIn(label, readme)
         self.assertIn("python-kasa>=0.11.0.1", readme)
-        self.assertIn("python-kasa>=0.11.0.1", manifest["requirements"])
+        self.assertTrue(any(
+            requirement.startswith("python-kasa>=0.11.0.1")
+            for requirement in manifest["requirements"]
+        ))
         self.assertIn("0.11.0.1", third_party)
         self.assertNotIn("redacted.invalid", readme)
         self.assertNotIn("redacted.invalid", third_party)

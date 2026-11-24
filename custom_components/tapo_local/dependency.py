@@ -17,7 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 
 KASA_DISTRIBUTION = "python-kasa"
 KASA_VERSION = "0.11.0.1"
-KASA_REQUIREMENT = f"python-kasa>={KASA_VERSION}"
+KASA_VERSION_MAX = "0.13.0"
+KASA_REQUIREMENT = f"python-kasa>={KASA_VERSION},<{KASA_VERSION_MAX}"
 REQUIRED_REQUIREMENTS = [KASA_REQUIREMENT]
 DEPENDENCY_ISSUE_ID = "python_kasa_dependency"
 
@@ -43,7 +44,7 @@ def _meets_kasa_minimum(installed: str | None) -> bool:
     if not installed:
         return False
     try:
-        return Version(installed) >= Version(KASA_VERSION)
+        return Version(KASA_VERSION) <= Version(installed) < Version(KASA_VERSION_MAX)
     except InvalidVersion:
         return False
 
@@ -117,7 +118,7 @@ async def async_ensure_kasa(hass: HomeAssistant) -> None:
     installed = await hass.async_add_executor_job(installed_kasa_version)
     if not _meets_kasa_minimum(installed):
         detail = (
-            f"Home Assistant requires python-kasa >= {KASA_VERSION} but the active "
+            f"Home Assistant requires {KASA_REQUIREMENT} but the active "
             f"runtime reports {installed or 'not installed'}. No TP-Link device "
             "commands were attempted. Reload or restart Home Assistant after "
             "correcting the Python dependency environment."

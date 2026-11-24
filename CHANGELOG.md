@@ -2,6 +2,33 @@
 
 Release notes tell you what changed, what to do after updating, and what is still limited. New releases use their matching changelog section as GitHub release notes. [See all public releases](https://github.com/gigabytegrove/tapo-local/releases).
 
+## Unreleased
+
+### Added
+- Tapo DL130 smart locks. The DL130 reports `SMART.TAPOLOCK` / `DL130(US)` and uses the DL100's DLKLAP protocol on HTTP port 80, so it runs on the existing DL100 backend: network scan, targeted discovery, owner-account lock list and session setup now accept both models.
+- The lock model saved at setup is kept, so a DL130 is no longer reported as a DL100 when the lock omits its model.
+
+### Fixed
+- The "Select the correct lock" step now shows readable lock names. Tapo's cloud device list returns nicknames base64-encoded, and they were shown as raw text.
+- Setup and repair dialogs now say DL100/DL130 instead of DL100 only.
+
+### Upgrade notes
+- No action needed for existing DL100 entries. Add a DL130 the same way as a DL100, using its IP address.
+
+## 0.7.10
+
+### Security
+- Remove raw exception contents from DL100 cloud owner reauthentication and session restoration error surfaces; preserve previous session state.
+- Keep DL100 secrets in Home Assistant private storage; no device re-pairing or identity migration.
+- Constrain python-kasa to the 0.11.x and 0.12.x families, avoiding uncontrolled future protocol upgrades.
+- Add CodeQL and security-contract regression tests. Restrict privileged release workflows to successful first-party main pushes.
+
+### Compatibility
+- Add a Home Assistant Core 2026.11.1 import qualification job. Real hardware control and cloud provisioning require owner verification.
+
+### Upgrade notes
+- Use HACS to upgrade and restart Home Assistant. Preserve existing DL100 and switch entries; do not delete working locks.
+
 ## 0.7.9
 
 ### Fixed

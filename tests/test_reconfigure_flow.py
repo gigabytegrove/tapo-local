@@ -164,7 +164,7 @@ class ReconfigureFlowTests(unittest.IsolatedAsyncioTestCase):
                 return testcase.kasa_result
 
         class FakeDL100:
-            def __init__(self, host, *, session_state):
+            def __init__(self, host, *, session_state, model=None):
                 self.session_state = dict(session_state)
                 testcase.probed.append(("dl100", host, dict(session_state)))
 

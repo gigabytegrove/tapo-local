@@ -38,7 +38,7 @@ class ProvisioningError(Exception):
 
 
 class FakeDL100:
-    def __init__(self, host, *, session_state):
+    def __init__(self, host, *, session_state, model=None):
         self.host = host
 
     async def get_state(self):
